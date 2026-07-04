@@ -6,5 +6,7 @@ struct DiscFreeApp: App {
         Window("DiscFree", id: "main") {
             ContentView()
         }
+        .defaultSize(width: 900, height: 680)
+        .windowResizability(.contentMinSize)
     }
 }
