@@ -1,5 +1,6 @@
 import SwiftUI
 import Observation
+import AppKit
 
 /// Drives the whole app: the start → scanning → result state machine, the scan task and
 /// its cancellation, and the (off-main-thread) sunburst layout for the current focus node.
@@ -18,8 +19,16 @@ final class AppModel {
     private(set) var root: FileNode?
     private(set) var segments: [SunburstSegment] = []
 
+    /// The focus node's direct children, sorted by size descending (the contents panel rows).
+    private(set) var rows: [FileNode] = []
+
     /// Current focus (center of the sunburst). Changing it recomputes the layout.
     private(set) var focus: FileNode?
+
+    /// Node awaiting a Move-to-Trash confirmation; non-nil drives the confirmation dialog.
+    private(set) var pendingTrash: FileNode?
+    /// Last deletion error; non-nil drives the error alert.
+    private(set) var errorMessage: String?
 
     private let scanner = DiskScanner()
     private var scanTask: Task<Void, Never>?
@@ -46,6 +55,9 @@ final class AppModel {
         root = nil
         focus = nil
         segments = []
+        rows = []
+        pendingTrash = nil
+        errorMessage = nil
 
         scanTask = Task { [weak self] in
             guard let self else { return }
@@ -81,6 +93,9 @@ final class AppModel {
         root = nil
         focus = nil
         segments = []
+        rows = []
+        pendingTrash = nil
+        errorMessage = nil
     }
 
     // MARK: - Navigation
@@ -104,17 +119,58 @@ final class AppModel {
 
     private func setFocus(_ node: FileNode) {
         focus = node
-        rebuildLayout(for: node)
+        rebuild(for: node)
     }
 
-    private func rebuildLayout(for node: FileNode) {
+    /// Recomputes the sunburst segments and the panel rows for `node` off the main thread.
+    private func rebuild(for node: FileNode) {
         layoutTask?.cancel()
         layoutTask = Task { [weak self] in
-            let built = await Task.detached(priority: .userInitiated) {
-                SunburstLayout.build(focus: node)
+            let result = await Task.detached(priority: .userInitiated) {
+                () -> (segments: [SunburstSegment], rows: [FileNode]) in
+                let segments = SunburstLayout.build(focus: node)
+                let rows = (node.children ?? []).sorted { $0.allocatedSize > $1.allocatedSize }
+                return (segments, rows)
             }.value
             guard !Task.isCancelled else { return }
-            self?.segments = built
+            self?.segments = result.segments
+            self?.rows = result.rows
+        }
+    }
+
+    // MARK: - Deletion
+
+    func reveal(_ node: FileNode) {
+        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: node.path)])
+    }
+
+    func requestTrash(_ node: FileNode) {
+        pendingTrash = node
+    }
+
+    func cancelTrash() {
+        pendingTrash = nil
+    }
+
+    func dismissError() {
+        errorMessage = nil
+    }
+
+    /// Moves the pending node to the Trash, then updates the in-memory tree. On failure the
+    /// tree is left unchanged and an error is surfaced.
+    func confirmTrash() {
+        guard let node = pendingTrash, let focus else {
+            pendingTrash = nil
+            return
+        }
+        pendingTrash = nil
+
+        do {
+            try FileManager.default.trashItem(at: URL(fileURLWithPath: node.path), resultingItemURL: nil)
+            try TreeEditor.remove(node, keeping: focus)
+            rebuild(for: focus)
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 }

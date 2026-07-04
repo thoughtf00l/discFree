@@ -75,12 +75,13 @@ struct SunburstView: View {
     let onDrill: (FileNode) -> Void
     let onAscend: () -> Void
 
-    @State private var hoveredID: ObjectIdentifier?
-    @State private var hoveredNode: FileNode?
+    /// Shared with the contents panel so hovering in either place highlights both.
+    @Binding var hovered: FileNode?
 
     var body: some View {
         GeometryReader { proxy in
             let geometry = SunburstGeometry(size: proxy.size, ringCount: SunburstLayout.maxDepth)
+            let hoveredID = hovered.map(ObjectIdentifier.init)
 
             ZStack {
                 Canvas { context, size in
@@ -102,7 +103,7 @@ struct SunburstView: View {
 
     @ViewBuilder
     private func centerLabel(_ geometry: SunburstGeometry) -> some View {
-        let shown = hoveredNode ?? focus
+        let shown = hovered ?? focus
         VStack(spacing: 3) {
             Text(shown.displayName)
                 .font(.headline)
@@ -113,7 +114,7 @@ struct SunburstView: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
-            if hoveredNode == nil, focus.parent != nil {
+            if hovered == nil, focus.parent != nil {
                 Text("Click center to go up")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
@@ -140,15 +141,12 @@ struct SunburstView: View {
         case .active(let location):
             if let hit = geometry.hitTest(location), hit.depth > 0,
                let segment = segment(at: hit) {
-                hoveredID = segment.id
-                hoveredNode = segment.node
+                hovered = segment.node
             } else {
-                hoveredID = nil
-                hoveredNode = nil
+                hovered = nil
             }
         case .ended:
-            hoveredID = nil
-            hoveredNode = nil
+            hovered = nil
         }
     }
 

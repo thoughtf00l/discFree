@@ -14,3 +14,9 @@ extension FileNode {
         return last.isEmpty ? name : last
     }
 }
+
+// Reference identity is stable for the lifetime of a scan, which is all SwiftUI's
+// ForEach/List need. Declared in the UI layer; the ScanEngine sources are untouched.
+extension FileNode: Identifiable {
+    var id: ObjectIdentifier { ObjectIdentifier(self) }
+}
