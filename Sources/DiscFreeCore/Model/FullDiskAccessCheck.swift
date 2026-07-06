@@ -1,7 +1,7 @@
 import Foundation
 import AppKit
 
-enum FullDiskAccessStatus: Equatable {
+public enum FullDiskAccessStatus: Equatable {
     /// A protected location could be opened — the app has Full Disk Access.
     case granted
     /// A protected location exists but could not be opened — FDA is missing.
@@ -14,8 +14,8 @@ enum FullDiskAccessStatus: Equatable {
 /// exist on a normal account (e.g. ~/Library/Safari, ~/Library/Application Support/com.apple.TCC).
 /// Such a directory can be seen with `lstat` but fails to `open` with EPERM unless the app has
 /// FDA, while the enclosing ~/Library stays readable.
-struct FullDiskAccessCheck {
-    static let defaultProbePaths: [String] = {
+public struct FullDiskAccessCheck {
+    public static let defaultProbePaths: [String] = {
         let library = "\(NSHomeDirectory())/Library"
         return [
             "\(library)/Safari",
@@ -28,7 +28,7 @@ struct FullDiskAccessCheck {
     let libraryPath: String
     let probePaths: [String]
 
-    init(
+    public init(
         libraryPath: String = "\(NSHomeDirectory())/Library",
         probePaths: [String] = FullDiskAccessCheck.defaultProbePaths
     ) {
@@ -37,7 +37,7 @@ struct FullDiskAccessCheck {
     }
 
     /// Real check against the file system.
-    func status() -> FullDiskAccessStatus {
+    public func status() -> FullDiskAccessStatus {
         let parentReadable = Self.canOpenDirectory(libraryPath)
         for path in probePaths where Self.exists(path) {
             return Self.evaluate(
@@ -78,7 +78,7 @@ struct FullDiskAccessCheck {
     )!
 
     @MainActor
-    static func openSystemSettings() {
+    public static func openSystemSettings() {
         NSWorkspace.shared.open(settingsURL)
     }
 }

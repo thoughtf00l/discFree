@@ -1,4 +1,5 @@
 import SwiftUI
+import DiscFreeCore
 
 /// The right-hand contents list: the focus node's children, largest first.
 struct ContentsPanel: View {

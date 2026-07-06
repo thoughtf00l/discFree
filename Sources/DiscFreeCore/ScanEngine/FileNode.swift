@@ -17,37 +17,37 @@ import Foundation
 /// Ownership is handed between workers through a lock that establishes happens-before,
 /// and the final size aggregation runs after all workers have finished. Hence the
 /// `@unchecked Sendable` conformance: there is no concurrent mutation of the same node.
-final class FileNode: @unchecked Sendable {
+public final class FileNode: @unchecked Sendable {
     /// For the root node this holds the absolute path of the scan root (e.g. "/Applications"
     /// or "/"); for every other node it is just the entry's own name. `path` relies on this.
-    let name: String
+    public let name: String
 
-    let isDirectory: Bool
+    public let isDirectory: Bool
 
     /// Physical "size on disk" in bytes.
     /// For files: the file's own allocated size (0 for hard-link occurrences already counted).
     /// For directories: the aggregated total of all descendants (files only, no directory
     /// metadata overhead), filled in during the post-order aggregation pass.
-    var allocatedSize: Int64
+    public internal(set) var allocatedSize: Int64
 
     /// `nil` for non-directories; an array (possibly empty) for directories.
-    var children: [FileNode]?
+    public internal(set) var children: [FileNode]?
 
     /// Set when the directory could not be opened/read (e.g. permission denied), or for a
     /// directory entry the file system reported a per-entry error for. The scan continues.
-    var isUnreadable: Bool
+    public internal(set) var isUnreadable: Bool
 
     /// Bytes within this subtree attributable to developer-reclaimable items, filled in by a
     /// `DevClassifier` pass. Equals `allocatedSize` on a dev-item root; on a plain directory it
     /// is the sum of its children's `devSize`; on a plain file it is 0.
-    var devSize: Int64 = 0
+    public internal(set) var devSize: Int64 = 0
 
     /// Non-nil only on the outermost node that matched a `DevItemCatalog` rule (a dev-item root);
     /// descendants of a matched node are left `nil`. Set by a `DevClassifier` pass.
-    var devCategory: DevCategory?
+    public internal(set) var devCategory: DevCategory?
 
     /// Weak to avoid retain cycles (children are owned strongly by their parent).
-    weak var parent: FileNode?
+    public internal(set) weak var parent: FileNode?
 
     init(name: String, isDirectory: Bool, allocatedSize: Int64 = 0, parent: FileNode?) {
         self.name = name
@@ -59,7 +59,7 @@ final class FileNode: @unchecked Sendable {
     }
 
     /// Reconstructs the absolute path by walking the parent chain up to the root.
-    var path: String {
+    public var path: String {
         var components: [String] = []
         var node: FileNode? = self
         while let current = node {

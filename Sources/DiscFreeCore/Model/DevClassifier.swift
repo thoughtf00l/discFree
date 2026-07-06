@@ -7,7 +7,7 @@ import Foundation
 /// tree's own `devCategory`/`devSize` fields and never touches the disk, so it is safe to
 /// run off the main thread on an otherwise-untouched tree (the same model as
 /// `AppModel.recountUnreadable`).
-enum DevClassifier {
+public enum DevClassifier {
 
     /// Walks `root` once, setting `devCategory` on the outermost node that matches a rule and
     /// filling in `devSize` for every node.
@@ -16,7 +16,7 @@ enum DevClassifier {
     /// `devSize` is set to `allocatedSize` and the walk does not descend further (descendants
     /// keep `devCategory == nil`). For a non-matching directory `devSize` is the sum of its
     /// children's `devSize`; for a non-matching file it is 0.
-    static func classify(_ root: FileNode, using catalog: DevItemCatalog) {
+    public static func classify(_ root: FileNode, using catalog: DevItemCatalog) {
         // Track the absolute path incrementally instead of calling `FileNode.path` per node,
         // which rebuilds the string from the parent chain (O(depth) each) — far too slow on
         // trees with millions of nodes. `root.name` is the scan root's absolute path.
@@ -49,7 +49,7 @@ enum DevClassifier {
     /// Whether `node` is a dev item or lives inside one, found by walking the parent chain for a
     /// non-nil `devCategory`. O(depth); intended for occasional per-node queries (panel rows,
     /// trash gating), not a per-frame walk of the whole tree.
-    static func isWithinDevItem(_ node: FileNode) -> Bool {
+    public static func isWithinDevItem(_ node: FileNode) -> Bool {
         var current: FileNode? = node
         while let candidate = current {
             if candidate.devCategory != nil { return true }

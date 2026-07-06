@@ -1,4 +1,5 @@
 import SwiftUI
+import DiscFreeCore
 
 struct ScanningView: View {
     let model: AppModel

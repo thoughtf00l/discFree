@@ -1,4 +1,5 @@
 import SwiftUI
+import DiscFreeCore
 
 struct ResultView: View {
     let model: AppModel

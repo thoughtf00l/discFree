@@ -1,6 +1,7 @@
 import SwiftUI
 import Observation
 import AppKit
+import DiscFreeCore
 
 /// How the sunburst and contents panel present the tree.
 enum DisplayMode: Sendable {

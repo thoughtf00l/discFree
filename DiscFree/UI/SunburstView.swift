@@ -1,4 +1,5 @@
 import SwiftUI
+import DiscFreeCore
 
 /// Maps sunburst segments (depth + angles) to on-screen geometry for a given view size,
 /// and back again for hit-testing. Angles are measured from the top, increasing clockwise.

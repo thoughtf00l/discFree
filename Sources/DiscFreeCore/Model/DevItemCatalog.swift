@@ -2,7 +2,7 @@ import Foundation
 
 /// Coarse grouping of developer-reclaimable items, used to colour/label them later.
 /// Backed by `String` so it can be persisted or shown without a separate mapping table.
-enum DevCategory: String, Sendable {
+public enum DevCategory: String, Sendable {
     /// Xcode build products, archives, device-support symbols, and Xcode's own caches.
     case xcodeBuild
     /// CoreSimulator device images and caches.
@@ -26,7 +26,7 @@ enum DevCategory: String, Sendable {
 ///
 /// The home directory is injected so tests can point the absolute rules at a synthetic tree.
 /// All matching reads only the in-memory `FileNode` tree; it never touches the disk.
-struct DevItemCatalog {
+public struct DevItemCatalog {
 
     /// A guard that must hold for a name rule to match.
     enum NameGuard {
@@ -53,7 +53,7 @@ struct DevItemCatalog {
     /// Directory name → rule, matched anywhere in the tree.
     let nameRules: [String: NameRule]
 
-    init(home: String = FileManager.default.homeDirectoryForCurrentUser.path) {
+    public init(home: String = FileManager.default.homeDirectoryForCurrentUser.path) {
         // Normalise: drop a trailing slash so joins produce "<home>/<relative>", not "//".
         let home = (home.count > 1 && home.hasSuffix("/")) ? String(home.dropLast()) : home
 

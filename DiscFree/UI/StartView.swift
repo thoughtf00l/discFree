@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import DiscFreeCore
 
 struct StartView: View {
     let model: AppModel

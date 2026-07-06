@@ -6,6 +6,11 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		D0F100000000000000000102 /* DiscFreeCore in Frameworks */ = {isa = PBXBuildFile; productRef = D0F100000000000000000101 /* DiscFreeCore */; };
+		D0F100000000000000000104 /* DiscFreeCore in Frameworks */ = {isa = PBXBuildFile; productRef = D0F100000000000000000103 /* DiscFreeCore */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		D0F1000000000000000000A4 /* DiscFree.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DiscFree.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		D0F1000000000000000000C3 /* DiscFreeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DiscFreeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -21,6 +26,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D0F100000000000000000102 /* DiscFreeCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -28,6 +34,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D0F100000000000000000104 /* DiscFreeCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -72,6 +79,7 @@
 			);
 			name = DiscFree;
 			packageProductDependencies = (
+				D0F100000000000000000101 /* DiscFreeCore */,
 			);
 			productName = DiscFree;
 			productReference = D0F1000000000000000000A4 /* DiscFree.app */;
@@ -95,6 +103,7 @@
 			);
 			name = DiscFreeTests;
 			packageProductDependencies = (
+				D0F100000000000000000103 /* DiscFreeCore */,
 			);
 			productName = DiscFreeTests;
 			productReference = D0F1000000000000000000C3 /* DiscFreeTests.xctest */;
@@ -129,6 +138,9 @@
 			);
 			mainGroup = D0F1000000000000000000A2;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				D0F100000000000000000100 /* XCLocalSwiftPackageReference "." */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = D0F1000000000000000000A3 /* Products */;
 			projectDirPath = "";
@@ -424,6 +436,24 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		D0F100000000000000000100 /* XCLocalSwiftPackageReference "." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = .;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		D0F100000000000000000101 /* DiscFreeCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = DiscFreeCore;
+		};
+		D0F100000000000000000103 /* DiscFreeCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = DiscFreeCore;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = D0F1000000000000000000A1 /* Project object */;
 }

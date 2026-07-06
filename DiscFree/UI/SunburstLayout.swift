@@ -1,4 +1,5 @@
 import SwiftUI
+import DiscFreeCore
 
 /// One drawable ring segment. Cheap value data: the view never walks the `FileNode`
 /// tree while rendering — it renders this precomputed array. The `node` reference is

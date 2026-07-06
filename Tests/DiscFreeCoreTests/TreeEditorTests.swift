@@ -1,5 +1,5 @@
 import XCTest
-@testable import DiscFree
+@testable import DiscFreeCore
 
 final class TreeEditorTests: XCTestCase {
 

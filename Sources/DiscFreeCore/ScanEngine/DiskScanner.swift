@@ -8,14 +8,14 @@ import Foundation
 ///
 /// Cancellation is cooperative: cancelling the task that consumes the stream tears the
 /// stream down, which cancels the scan; the stream then finishes with `CancellationError`.
-final class DiskScanner: Sendable {
+public final class DiskScanner: Sendable {
 
     /// Progress emission interval.
     private let progressInterval: DispatchTimeInterval = .milliseconds(50)
 
-    init() {}
+    public init() {}
 
-    func scan(at root: URL) -> AsyncThrowingStream<ScanUpdate, Error> {
+    public func scan(at root: URL) -> AsyncThrowingStream<ScanUpdate, Error> {
         let workerCount = ProcessInfo.processInfo.activeProcessorCount
         let interval = progressInterval
 

@@ -1,6 +1,6 @@
 import XCTest
 import Darwin
-@testable import DiscFree
+@testable import DiscFreeCore
 
 final class FullDiskAccessCheckTests: XCTestCase {
 

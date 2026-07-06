@@ -11,7 +11,7 @@ enum TreeEditError: Error, Equatable {
 
 /// Non-UI tree mutation for deletion. Isolated from the scanner and the views so it can be
 /// unit-tested directly.
-enum TreeEditor {
+public enum TreeEditor {
     /// Detaches `node` from its parent and subtracts its aggregated `allocatedSize` and `devSize`
     /// from every ancestor, keeping directory totals consistent without a re-scan or
     /// re-classification.
@@ -21,7 +21,7 @@ enum TreeEditor {
     ///   - focus: the node currently shown; removing it is disallowed.
     /// - Returns: the removed node's former parent.
     @discardableResult
-    static func remove(_ node: FileNode, keeping focus: FileNode) throws -> FileNode {
+    public static func remove(_ node: FileNode, keeping focus: FileNode) throws -> FileNode {
         guard node !== focus else { throw TreeEditError.cannotRemoveFocus }
         guard let parent = node.parent else { throw TreeEditError.cannotRemoveRoot }
         guard let index = parent.children?.firstIndex(where: { $0 === node }) else {
