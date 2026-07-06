@@ -12,8 +12,9 @@ enum TreeEditError: Error, Equatable {
 /// Non-UI tree mutation for deletion. Isolated from the scanner and the views so it can be
 /// unit-tested directly.
 enum TreeEditor {
-    /// Detaches `node` from its parent and subtracts its aggregated size from every ancestor,
-    /// keeping directory totals consistent.
+    /// Detaches `node` from its parent and subtracts its aggregated `allocatedSize` and `devSize`
+    /// from every ancestor, keeping directory totals consistent without a re-scan or
+    /// re-classification.
     ///
     /// - Parameters:
     ///   - node: the node to remove.
@@ -31,9 +32,11 @@ enum TreeEditor {
         node.parent = nil
 
         let removedSize = node.allocatedSize
+        let removedDevSize = node.devSize
         var ancestor: FileNode? = parent
         while let current = ancestor {
             current.allocatedSize -= removedSize
+            current.devSize -= removedDevSize
             ancestor = current.parent
         }
         return parent

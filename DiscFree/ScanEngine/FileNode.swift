@@ -7,6 +7,10 @@ import Foundation
 /// - no `URL` stored per node; absolute paths are reconstructed from the parent chain,
 /// - no `Codable`/reflection machinery.
 ///
+/// The developer-classification fields (`devSize`, `devCategory`) default to empty and are
+/// populated only by an optional `DevClassifier` pass after a scan; a tree that is never
+/// classified leaves them at their defaults.
+///
 /// Thread-safety: during a scan each node is mutated only by the single worker that
 /// enumerated its parent directory (which appends this node) or, for directories, by the
 /// single worker that enumerates this node (which fills `children`/`isUnreadable`).
@@ -32,6 +36,15 @@ final class FileNode: @unchecked Sendable {
     /// Set when the directory could not be opened/read (e.g. permission denied), or for a
     /// directory entry the file system reported a per-entry error for. The scan continues.
     var isUnreadable: Bool
+
+    /// Bytes within this subtree attributable to developer-reclaimable items, filled in by a
+    /// `DevClassifier` pass. Equals `allocatedSize` on a dev-item root; on a plain directory it
+    /// is the sum of its children's `devSize`; on a plain file it is 0.
+    var devSize: Int64 = 0
+
+    /// Non-nil only on the outermost node that matched a `DevItemCatalog` rule (a dev-item root);
+    /// descendants of a matched node are left `nil`. Set by a `DevClassifier` pass.
+    var devCategory: DevCategory?
 
     /// Weak to avoid retain cycles (children are owned strongly by their parent).
     weak var parent: FileNode?
