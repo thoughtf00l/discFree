@@ -74,7 +74,7 @@ public struct FullDiskAccessCheck {
     // MARK: - System Settings deep link
 
     static let settingsURL = URL(
-        string: "x-apple.systempreference:com.apple.preference.security?Privacy_AllFiles"
+        string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
     )!
 
     @MainActor
