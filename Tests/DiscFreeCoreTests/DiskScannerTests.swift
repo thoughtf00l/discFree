@@ -1,5 +1,6 @@
 import XCTest
 import Darwin
+import Synchronization
 @testable import DiscFreeCore
 
 final class DiskScannerTests: XCTestCase {
@@ -67,6 +68,68 @@ final class DiskScannerTests: XCTestCase {
         // ...but the shared inode is counted exactly once.
         XCTAssertEqual(tree.allocatedSize, singleAllocation,
                        "hard-linked inode must be counted once, not twice")
+    }
+
+    // MARK: - Directory claims (firmlink dedup)
+
+    func testDirectoryClaimsFirstWinsRepeatLoses() {
+        let claims = ScanCoordinator.DirectoryClaims()
+        XCTAssertTrue(claims.claim(device: 1, fileID: 100), "the first claim of a key must win")
+        XCTAssertFalse(claims.claim(device: 1, fileID: 100), "a repeat claim of the same key must lose")
+        XCTAssertFalse(claims.claim(device: 1, fileID: 100), "further repeats must keep losing")
+    }
+
+    func testDirectoryClaimsDistinctKeysAreIndependent() {
+        let claims = ScanCoordinator.DirectoryClaims()
+        // A different fileID on the same device is a distinct directory.
+        XCTAssertTrue(claims.claim(device: 1, fileID: 100))
+        XCTAssertTrue(claims.claim(device: 1, fileID: 101), "a different fileID is a distinct claim")
+        // The same fileID on a different device is also distinct.
+        XCTAssertTrue(claims.claim(device: 2, fileID: 100), "a different device is a distinct claim")
+        // Each is now taken.
+        XCTAssertFalse(claims.claim(device: 1, fileID: 100))
+        XCTAssertFalse(claims.claim(device: 1, fileID: 101))
+        XCTAssertFalse(claims.claim(device: 2, fileID: 100))
+    }
+
+    func testDirectoryClaimsConcurrentSingleWinner() {
+        // Many threads racing to claim one key must yield exactly one winner.
+        let claims = ScanCoordinator.DirectoryClaims()
+        let winners = Atomic<Int>(0)
+        DispatchQueue.concurrentPerform(iterations: 256) { _ in
+            if claims.claim(device: 7, fileID: 4242) {
+                winners.wrappingAdd(1, ordering: .relaxed)
+            }
+        }
+        XCTAssertEqual(winners.load(ordering: .relaxed), 1,
+                       "concurrent claims of one key must produce exactly one winner")
+    }
+
+    // MARK: - Firmlink dedup must not skip real directories
+
+    func testNestedScanMatchesReferenceAndRescanIsStable() throws {
+        // Every real directory has a unique fileID, so claiming directories by (device, fileID)
+        // must skip nothing: a normal nested tree must still match the reference walk byte-for-byte.
+        try writeFile(root.appendingPathComponent("a.bin"), bytes: 10_000)
+        let sub1 = try makeDirectory(root.appendingPathComponent("sub1"))
+        try writeFile(sub1.appendingPathComponent("b.bin"), bytes: 5_000)
+        let deep = try makeDirectory(sub1.appendingPathComponent("deep"))
+        try writeFile(deep.appendingPathComponent("d.bin"), bytes: 8_000)
+        let sub2 = try makeDirectory(root.appendingPathComponent("sub2"))
+        try writeFile(sub2.appendingPathComponent("e.bin"), bytes: 4_096)
+
+        let expected = try referenceAllocatedSize(of: root)
+        XCTAssertGreaterThan(expected, 0)
+
+        // Two consecutive scans, a fresh coordinator each: the root-claim in init must not carry
+        // over, so both runs return the full total.
+        let first = try ScanCoordinator(root: root, workerCount: 4).run()
+        XCTAssertEqual(first.allocatedSize, expected,
+                       "first scan must match the reference walk (nothing skipped)")
+
+        let second = try ScanCoordinator(root: root, workerCount: 4).run()
+        XCTAssertEqual(second.allocatedSize, expected,
+                       "rescan must return the same total; the root claim must not leak across runs")
     }
 
     // MARK: - Symlinks are not followed

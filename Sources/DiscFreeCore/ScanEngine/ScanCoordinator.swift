@@ -17,9 +17,34 @@ final class ScanCoordinator: @unchecked Sendable {
         let path: String
     }
 
-    private struct HardLinkKey: Hashable {
+    // Internal (not private) so `DirectoryClaims`, which embeds a `Set<HardLinkKey>`, can be
+    // constructed and exercised from `@testable` tests: instantiating that type pulls in this
+    // type's metadata, which `@testable` can reference only when it is at least internal.
+    struct HardLinkKey: Hashable {
         let device: dev_t
         let fileID: UInt64
+    }
+
+    /// Claims each directory once by its `(device, fileID)` identity so a directory reachable at
+    /// more than one path is enumerated a single time.
+    ///
+    /// APFS firmlinks alias the *same* directory at multiple paths within what `stat` reports as
+    /// one device — `/Users` and `/System/Volumes/Data/Users` are literally one directory with one
+    /// inode — so `ScanCoordinator`'s device-boundary check cannot separate them and a naive walk
+    /// of `/` would count the whole user tree twice. The first claimer wins; with the BFS queue the
+    /// shallow occurrence (`/Users`) is claimed before the deep alias
+    /// (`/System/Volumes/Data/Users`), so the alias is the one left empty. Even if a race inverted
+    /// that order the total stays correct — only which path holds the counted bytes would differ.
+    struct DirectoryClaims: ~Copyable {
+        private let claimed = Mutex<Set<HardLinkKey>>([])
+
+        init() {}
+
+        /// Inserts `(device, fileID)` and returns true exactly on the first claim of that identity;
+        /// false if it was already claimed.
+        func claim(device: dev_t, fileID: UInt64) -> Bool {
+            claimed.withLock { $0.insert(HardLinkKey(device: device, fileID: fileID)).inserted }
+        }
     }
 
     private let workerCount: Int
@@ -47,6 +72,7 @@ final class ScanCoordinator: @unchecked Sendable {
     private let itemsScanned = Atomic<Int>(0)
     private let bytesAccumulated = Atomic<Int64>(0)
     private let hardLinks = Mutex<Set<HardLinkKey>>([])
+    private let directoryClaims = DirectoryClaims()
     private let currentPath = Mutex<String>("")
 
     private static let bufferSize = 256 * 1024
@@ -60,6 +86,10 @@ final class ScanCoordinator: @unchecked Sendable {
         self.workerCount = max(1, workerCount)
         self.rootDevice = status.st_dev
         self.root = FileNode(name: rootPath, isDirectory: true, parent: nil)
+        // Register the root's own identity so a firmlink that aliases the root back as a
+        // descendant is not re-enumerated (see DirectoryClaims); a fresh coordinator per scan
+        // starts with an empty claim set, so this never leaks across runs.
+        _ = directoryClaims.claim(device: status.st_dev, fileID: UInt64(status.st_ino))
     }
 
     // MARK: - Public control
@@ -255,9 +285,20 @@ final class ScanCoordinator: @unchecked Sendable {
                 case UInt32(VDIR.rawValue):
                     let node = FileNode(name: entry.name, isDirectory: true, parent: job.node)
                     localChildren.append(node)
-                    subdirectories.append(
-                        Job(node: node, path: Self.appending(entry.name, to: job.path))
-                    )
+                    // Enumerate a directory only on the first claim of its (device, fileID)
+                    // identity (see DirectoryClaims): a firmlink alias is still shown as a child
+                    // node but is not descended into, so it stays an empty 0-byte directory —
+                    // exactly like the second occurrence of a hard-linked file shows 0 bytes.
+                    // A missing devID/fileID (getattrlistbulk normally returns both) must fall
+                    // back to enumerating so a real directory is never skipped.
+                    let firstClaim = entry.hasDevID && entry.hasFileID
+                        ? directoryClaims.claim(device: entry.devID, fileID: entry.fileID)
+                        : true
+                    if firstClaim {
+                        subdirectories.append(
+                            Job(node: node, path: Self.appending(entry.name, to: job.path))
+                        )
+                    }
 
                 case UInt32(VLNK.rawValue):
                     // Symlinks are not followed; counted by their own size.

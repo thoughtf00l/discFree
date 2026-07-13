@@ -76,7 +76,9 @@ directory. JSON shape:
 ```
 
 `bytes` is physical size on disk; hard links count once (a second occurrence shows
-0 bytes). `unreadable` is present only when true.
+0 bytes). A directory reachable at several paths (APFS firmlinks, e.g. `/Users` vs
+`/System/Volumes/Data/Users`) is likewise counted once, with later occurrences shown
+as empty directories. `unreadable` is present only when true.
 
 ### `discfree dev <path> [--json] [--min-size SIZE]`
 
