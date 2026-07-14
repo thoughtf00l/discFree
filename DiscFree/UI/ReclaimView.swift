@@ -7,6 +7,13 @@ import DiscFreeCore
 struct ReclaimView: View {
     let model: AppModel
 
+    /// Categories the user has expanded to reveal their hidden tail. A group with more than
+    /// `collapsedItemLimit` items shows only its largest `collapsedItemLimit` until expanded.
+    @State private var expandedCategories: Set<DevCategory> = []
+
+    /// Max items shown per group before the rest collapse behind a "N more items" row.
+    private let collapsedItemLimit = 12
+
     var body: some View {
         Group {
             if model.scanActive {
@@ -47,13 +54,24 @@ struct ReclaimView: View {
             List {
                 ForEach(model.reclaimGroups, id: \.category) { group in
                     Section {
-                        ForEach(group.items, id: \.node.id) { item in
+                        let expanded = expandedCategories.contains(group.category)
+                        let visible = expanded ? group.items : Array(group.items.prefix(collapsedItemLimit))
+                        ForEach(visible, id: \.node.id) { item in
                             ReclaimItemRow(
                                 item: item,
                                 rootName: model.root?.name ?? "",
+                                label: model.reclaimLabel(for: item),
                                 isSelected: model.isReclaimItemSelected(item),
                                 onToggle: { model.toggleReclaimItem(item) },
                                 onReveal: { model.reveal(item.node) }
+                            )
+                        }
+                        if group.items.count > collapsedItemLimit {
+                            ReclaimGroupDisclosureRow(
+                                hiddenCount: group.items.count - collapsedItemLimit,
+                                hiddenBytes: hiddenTailBytes(group),
+                                expanded: expanded,
+                                onToggle: { toggleExpansion(group.category) }
                             )
                         }
                     } header: {
@@ -91,12 +109,27 @@ struct ReclaimView: View {
     }
 
     /// The tri-state checkbox value for a group: on when all items are selected, mixed when some
-    /// are, off when none are.
+    /// are, off when none are. Computed over ALL items (not just the visible ones), so a hidden
+    /// selection still shows as mixed even while the group is collapsed.
     private func groupState(_ group: ReclaimGroup) -> ReclaimCheckbox.State {
         let selected = group.items.filter { model.isReclaimItemSelected($0) }.count
         if selected == 0 { return .off }
         if selected == group.items.count { return .on }
         return .mixed
+    }
+
+    /// Combined bytes of the collapsed tail — the items past `collapsedItemLimit`. Items are sorted
+    /// largest-first, so the hidden tail is always the small stuff.
+    private func hiddenTailBytes(_ group: ReclaimGroup) -> Int64 {
+        group.items.dropFirst(collapsedItemLimit).reduce(0) { $0 + $1.bytes }
+    }
+
+    private func toggleExpansion(_ category: DevCategory) {
+        if expandedCategories.contains(category) {
+            expandedCategories.remove(category)
+        } else {
+            expandedCategories.insert(category)
+        }
     }
 
     private func trashMessage(for pending: AppModel.PendingReclaimTrash) -> String {
@@ -164,11 +197,14 @@ private struct ReclaimGroupHeader: View {
     }
 }
 
-/// One reclaimable item: a checkbox bound to its selection, its path shown relative to the scan
-/// root, and its size. Tapping the row toggles selection; the context menu reveals it in Finder.
+/// One reclaimable item: a checkbox bound to its selection, its label (a friendly device name when
+/// one exists, else its path relative to the scan root), and its size. Tapping the row toggles
+/// selection; the context menu reveals it in Finder.
 private struct ReclaimItemRow: View {
     let item: ReclaimItem
     let rootName: String
+    /// A friendly name (e.g. "iPhone 16 Pro (iOS 18.2)") when the raw path is opaque; else nil.
+    let label: String?
     let isSelected: Bool
     let onToggle: () -> Void
     let onReveal: () -> Void
@@ -176,7 +212,7 @@ private struct ReclaimItemRow: View {
     var body: some View {
         HStack(spacing: 8) {
             ReclaimCheckbox(state: isSelected ? .on : .off, action: onToggle)
-            Text(relativePath)
+            primaryText
                 .lineLimit(1)
                 .truncationMode(.middle)
             Spacer(minLength: 8)
@@ -196,6 +232,16 @@ private struct ReclaimItemRow: View {
         }
     }
 
+    /// The primary text: the friendly `label` when present (with the full path on hover, since the
+    /// label hides it), otherwise the relative path.
+    @ViewBuilder private var primaryText: some View {
+        if let label {
+            Text(label).help(item.path)
+        } else {
+            Text(relativePath)
+        }
+    }
+
     /// `item.path` with the scan root's absolute-path prefix (`rootName`) stripped, so a deep item
     /// reads as its location within the scan rather than a full absolute path. Falls back to the
     /// absolute path if the prefix does not match.
@@ -204,5 +250,30 @@ private struct ReclaimItemRow: View {
         var remainder = String(item.path.dropFirst(rootName.count))
         if remainder.hasPrefix("/") { remainder.removeFirst() }
         return remainder.isEmpty ? item.path : remainder
+    }
+}
+
+/// The trailing row of a group with more than `collapsedItemLimit` items: shows how much is hidden
+/// ("N more items · size") while collapsed, "Show less" while expanded, and toggles the group's
+/// expansion when tapped. Purely visual — the group's checkbox still operates on every item.
+private struct ReclaimGroupDisclosureRow: View {
+    let hiddenCount: Int
+    let hiddenBytes: Int64
+    let expanded: Bool
+    let onToggle: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(expanded ? "Show less" : "\(hiddenCount) more items · \(byteString(hiddenBytes))")
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+            Spacer(minLength: 8)
+        }
+        .padding(.vertical, 2)
+        .contentShape(Rectangle())
+        .onTapGesture { onToggle() }
     }
 }

@@ -75,6 +75,12 @@ final class AppModel {
     /// end of each classification pass. Empty during a scan and until the first classify completes.
     private(set) var reclaimGroups: [ReclaimGroup] = []
 
+    /// Friendly display labels for reclaim items whose path is otherwise opaque — the
+    /// simulator/emulator device directories (an opaque UUID for CoreSimulator, `<name>.avd` for
+    /// Android). Keyed by node identity, built off the main thread alongside `reclaimGroups` and
+    /// replaced atomically with it. Items absent from the map fall back to their relative path.
+    private(set) var reclaimLabels: [ObjectIdentifier: String] = [:]
+
     /// Identities (by node) of the reclaim items the user has checked for batch trashing. Pruned to
     /// the ids still present whenever `reclaimGroups` recomputes.
     private(set) var reclaimSelection: Set<ObjectIdentifier> = []
@@ -195,6 +201,7 @@ final class AppModel {
         errorMessage = nil
         unreadableCount = 0
         reclaimGroups = []
+        reclaimLabels = [:]
         reclaimSelection = []
         pendingReclaimTrash = nil
 
@@ -254,6 +261,7 @@ final class AppModel {
         errorMessage = nil
         unreadableCount = 0
         reclaimGroups = []
+        reclaimLabels = [:]
         reclaimSelection = []
         pendingReclaimTrash = nil
         refreshFullDiskAccess()
@@ -476,13 +484,76 @@ final class AppModel {
     private func recomputeReclaimGroups(from tree: FileNode) {
         reclaimTask?.cancel()
         reclaimTask = Task { [weak self] in
-            let groups = await Task.detached(priority: .utility) {
-                ReclaimSummary.build(from: tree)
+            let result = await Task.detached(priority: .utility) {
+                () -> (groups: [ReclaimGroup], labels: [ObjectIdentifier: String]) in
+                let groups = ReclaimSummary.build(from: tree)
+                let home = FileManager.default.homeDirectoryForCurrentUser.path
+                let labels = Self.reclaimDeviceLabels(for: groups, home: home)
+                return (groups, labels)
             }.value
             guard !Task.isCancelled, let self else { return }
-            self.reclaimGroups = groups
+            self.reclaimGroups = result.groups
+            self.reclaimLabels = result.labels
             self.pruneReclaimSelection()
         }
+    }
+
+    /// Friendly labels for the simulator/emulator device items, whose paths are otherwise opaque
+    /// directory names. Runs off the main thread inside the reclaim recompute; this is the one
+    /// place in the reclaim path that touches the disk — reading each CoreSimulator device's
+    /// `device.plist` — and it is bounded to at most a few dozen device directories.
+    private nonisolated static func reclaimDeviceLabels(
+        for groups: [ReclaimGroup],
+        home: String
+    ) -> [ObjectIdentifier: String] {
+        let coreSimulatorDevices = "\(home)/Library/Developer/CoreSimulator/Devices"
+        let androidAvd = "\(home)/.android/avd"
+        var labels: [ObjectIdentifier: String] = [:]
+        for group in groups where group.category == .simulators {
+            for item in group.items {
+                let parent = (item.path as NSString).deletingLastPathComponent
+                if parent == coreSimulatorDevices {
+                    if let label = coreSimulatorLabel(devicePath: item.path) {
+                        labels[ObjectIdentifier(item.node)] = label
+                    }
+                } else if parent == androidAvd {
+                    let name = (item.path as NSString).lastPathComponent
+                    let stripped = name.hasSuffix(".avd") ? String(name.dropLast(4)) : name
+                    if !stripped.isEmpty {
+                        labels[ObjectIdentifier(item.node)] = stripped
+                    }
+                }
+            }
+        }
+        return labels
+    }
+
+    /// Reads a CoreSimulator device's `device.plist` and formats "<name> (<runtime>)", e.g.
+    /// "iPhone 16 Pro (iOS 18.2)". Falls back to the name alone when the runtime is missing or
+    /// unparseable, and to `nil` (the view then shows the path) when even the name is absent.
+    private nonisolated static func coreSimulatorLabel(devicePath: String) -> String? {
+        guard let dict = NSDictionary(contentsOfFile: "\(devicePath)/device.plist"),
+              let name = (dict["name"] as? String), !name.isEmpty else { return nil }
+        guard let runtime = dict["runtime"] as? String,
+              let human = humanRuntime(runtime) else { return name }
+        return "\(name) (\(human))"
+    }
+
+    /// Turns a CoreSimulator runtime identifier into a human string: takes the component after the
+    /// last `.SimRuntime.` (`com.apple.CoreSimulator.SimRuntime.iOS-18-2` → `iOS-18-2`), then splits
+    /// on `-` — first part is the platform, the rest joins with `.` as the version → "iOS 18.2".
+    /// Returns nil when there is no `.SimRuntime.` marker or no version component.
+    private nonisolated static func humanRuntime(_ runtime: String) -> String? {
+        guard let marker = runtime.range(of: ".SimRuntime.", options: .backwards) else { return nil }
+        let parts = runtime[marker.upperBound...].split(separator: "-")
+        guard let platform = parts.first, parts.count >= 2 else { return nil }
+        return "\(platform) \(parts.dropFirst().joined(separator: "."))"
+    }
+
+    /// The friendly label for `item`, if one was built for it; otherwise nil (the view falls back
+    /// to the item's relative path).
+    func reclaimLabel(for item: ReclaimItem) -> String? {
+        reclaimLabels[ObjectIdentifier(item.node)]
     }
 
     /// Drops selected ids whose nodes are no longer in `reclaimGroups` (after a rescan or a trash
