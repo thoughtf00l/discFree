@@ -50,3 +50,16 @@ enum DevSelection {
         }
     }
 }
+
+extension DevCategory {
+    /// The category's risk tier as this CLI's snake_case token (`safe` / `costs_time` /
+    /// `loses_state`). Distinct from `DevRiskTier.rawValue`, which is camelCase and must stay
+    /// unchanged; the CLI's JSON keys and values are snake_case (e.g. `total_bytes`).
+    var riskToken: String {
+        switch riskTier {
+        case .safe: return "safe"
+        case .costsTime: return "costs_time"
+        case .losesState: return "loses_state"
+        }
+    }
+}

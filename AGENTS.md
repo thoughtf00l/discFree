@@ -94,20 +94,37 @@ because they hold released builds' dSYMs and cannot be regenerated, so
 folder under `~/Library/Caches` as its own item (folders already covered by a more
 specific category, e.g. Xcode or SwiftPM caches, keep that category instead), so a
 caller can reclaim individual apps rather than the whole caches directory. JSON:
-`{"items": [{"path", "category", "bytes"}], "total_bytes"}`.
+`{"items": [{"path", "category", "risk", "bytes"}], "total_bytes"}`.
+
+`risk` is the category's risk tier as a snake_case token: `safe` (regenerated at no
+cost beyond build time — `xcodeBuild`, `logs`), `costs_time` (comes back on demand,
+paying network and time — `packageCache`, `projectArtifacts`, `appCaches`,
+`adobeCache`), or `loses_state` (trashing destroys non-reproducible state —
+`simulators`, `xcodeArchives`, `docker`, `iosBackups`). The human (non-JSON) output
+groups items under a per-category header (`displayName — total [risk]`), largest
+category first.
 
 ### `discfree clean <path> [--json] [--category c1,c2] [--min-size SIZE] [--yes] [--dry-run]`
 
 Safety contract:
 
 - Without `--yes` (or with `--dry-run`): prints the plan and exits 0 — nothing is
-  touched. JSON: `{"dry_run": true, "planned": [...], "total_bytes", "hint"}`.
+  touched. JSON: `{"dry_run": true, "planned": [{"path", "category", "risk",
+  "bytes"}], "total_bytes", "hint"}`.
 - With `--yes`: moves the selected items to the **Trash** (recoverable), never
-  unlinks. JSON: `{"dry_run": false, "trashed": [{"path", "category", "bytes",
-  "note"?}], "failed": [{"path", "message"}], "reclaimed_bytes"}`.
+  unlinks. JSON: `{"dry_run": false, "trashed": [{"path", "category", "risk",
+  "bytes", "note"?}], "failed": [{"path", "message"}], "reclaimed_bytes"}`.
+  `planned` and `trashed` items carry the same `risk` token as `dev` items; `failed`
+  items do not (they carry only `path` and `message`).
 - Only items the classifier marked as dev items can ever be selected.
 - Idempotent: a path that vanished between scan and trash is reported with
   `"note": "already gone"` and does not fail the run.
+
+Acting on `risk`: items with `risk: "safe"` or `"costs_time"` may be cleaned
+autonomously when they meet the user's size goal — they cost at most build time or a
+re-download. Items with `"loses_state"` (simulators, Docker VM disks, Xcode archives,
+iOS device backups) destroy state that cannot be reproduced; propose these to the
+human and clean them only after explicit confirmation.
 
 Recommended agent flow: `dev --json` → decide → `clean --category ... --min-size ...`
 (review the plan) → same command with `--yes`.

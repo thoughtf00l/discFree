@@ -68,6 +68,52 @@ final class DevSelectionTests: XCTestCase {
         XCTAssertEqual(filtered.count, 3)
     }
 
+    // MARK: - Risk token (snake_case, one category per tier)
+
+    func testRiskTokenPerTierInJSON() throws {
+        // One category per DevRiskTier; the DTO's `risk` is built exactly as the commands do.
+        let cases: [(DevCategory, String)] = [
+            (.xcodeBuild, "safe"),          // .safe
+            (.packageCache, "costs_time"),  // .costsTime
+            (.docker, "loses_state"),       // .losesState
+        ]
+        for (category, expected) in cases {
+            let dto = DevItemDTO(
+                path: "/x", category: category.rawValue, risk: category.riskToken, bytes: 1
+            )
+            let data = try Output.makeJSONEncoder().encode(dto)
+            let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            XCTAssertEqual(object["risk"] as? String, expected, "risk for \(category.rawValue)")
+        }
+    }
+
+    // MARK: - Human grouping
+
+    func testDevItemsByCategoryGroupsWithHeadersAndRisk() {
+        let items = DevSelection.collect(classifiedTree())
+        let lines = HumanTables.devItemsByCategory(items)
+            .split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+
+        // Categories ordered by total size descending; each header carries displayName, total,
+        // and the risk token in brackets; items are indented beneath, size descending.
+        XCTAssertEqual(lines, [
+            "Project build artifacts — 3.0 KB [costs_time]",
+            "  3.0 KB  /fake/home/rustproj/target",
+            "Package caches — 1.0 KB [costs_time]",
+            "  1.0 KB  /fake/home/proj/node_modules",
+            "Xcode build products — 500 B [safe]",
+            "   500 B  /fake/home/ios/DerivedData",
+            "total: 4.5 KB across 3 item(s)",
+        ])
+    }
+
+    func testDevItemsByCategoryEmpty() {
+        XCTAssertEqual(
+            HumanTables.devItemsByCategory([]),
+            "No developer-reclaimable items found."
+        )
+    }
+
     // MARK: - Category flag parsing
 
     func testCategoryParseAcceptsKnownValues() throws {

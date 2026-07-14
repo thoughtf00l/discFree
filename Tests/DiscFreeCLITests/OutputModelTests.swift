@@ -32,11 +32,40 @@ final class OutputModelTests: XCTestCase {
     }
 
     func testTrashedItemOmitsNilNote() throws {
-        let item = TrashedItemDTO(path: "/x", category: "packageCache", bytes: 1, note: nil)
+        let item = TrashedItemDTO(
+            path: "/x", category: "packageCache", risk: "costs_time", bytes: 1, note: nil
+        )
         XCTAssertFalse(try jsonObject(item).keys.contains("note"))
 
-        let gone = TrashedItemDTO(path: "/x", category: "packageCache", bytes: 1, note: "already gone")
+        let gone = TrashedItemDTO(
+            path: "/x", category: "packageCache", risk: "costs_time", bytes: 1, note: "already gone"
+        )
         XCTAssertEqual(try jsonObject(gone)["note"] as? String, "already gone")
+    }
+
+    // MARK: - Risk field
+
+    func testDevItemIncludesRiskField() throws {
+        let item = DevItemDTO(path: "/a", category: "docker", risk: "loses_state", bytes: 1)
+        XCTAssertEqual(try jsonObject(item)["risk"] as? String, "loses_state")
+    }
+
+    func testTrashedItemIncludesRiskField() throws {
+        let item = TrashedItemDTO(
+            path: "/a", category: "xcodeBuild", risk: "safe", bytes: 1, note: nil
+        )
+        XCTAssertEqual(try jsonObject(item)["risk"] as? String, "safe")
+    }
+
+    func testCleanPlanItemsIncludeRisk() throws {
+        let plan = CleanPlanDTO(
+            dry_run: true,
+            planned: [DevItemDTO(path: "/a", category: "docker", risk: "loses_state", bytes: 9)],
+            total_bytes: 9,
+            hint: "re-run with --yes to move these to Trash"
+        )
+        let planned = try XCTUnwrap(try jsonObject(plan)["planned"] as? [[String: Any]])
+        XCTAssertEqual(planned.first?["risk"] as? String, "loses_state")
     }
 
     // MARK: - Round-trips (structure survives encode/decode)
@@ -57,7 +86,7 @@ final class OutputModelTests: XCTestCase {
 
     func testDevResultRoundTrips() throws {
         let result = DevResultDTO(
-            items: [DevItemDTO(path: "/a", category: "packageCache", bytes: 100)],
+            items: [DevItemDTO(path: "/a", category: "packageCache", risk: "costs_time", bytes: 100)],
             total_bytes: 100
         )
         XCTAssertEqual(try roundTrip(result), result)
@@ -66,7 +95,7 @@ final class OutputModelTests: XCTestCase {
     func testCleanPlanRoundTrips() throws {
         let plan = CleanPlanDTO(
             dry_run: true,
-            planned: [DevItemDTO(path: "/a", category: "xcodeBuild", bytes: 50)],
+            planned: [DevItemDTO(path: "/a", category: "xcodeBuild", risk: "safe", bytes: 50)],
             total_bytes: 50,
             hint: "re-run with --yes to move these to Trash"
         )
@@ -76,7 +105,9 @@ final class OutputModelTests: XCTestCase {
     func testCleanResultRoundTrips() throws {
         let result = CleanResultDTO(
             dry_run: false,
-            trashed: [TrashedItemDTO(path: "/a", category: "docker", bytes: 9, note: "already gone")],
+            trashed: [TrashedItemDTO(
+                path: "/a", category: "docker", risk: "loses_state", bytes: 9, note: "already gone"
+            )],
             failed: [FailedItemDTO(path: "/b", message: "denied")],
             reclaimed_bytes: 0
         )

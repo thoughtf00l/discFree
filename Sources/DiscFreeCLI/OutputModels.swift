@@ -25,9 +25,13 @@ struct ScanResultDTO: Codable, Equatable {
 }
 
 /// One developer-reclaimable item root, used by `dev` and `clean`.
+///
+/// `risk` is the category's risk tier as a snake_case token (`safe` / `costs_time` /
+/// `loses_state`), matching this CLI's JSON key convention (e.g. `total_bytes`).
 struct DevItemDTO: Codable, Equatable {
     let path: String
     let category: String
+    let risk: String
     let bytes: Int64
 }
 
@@ -52,6 +56,7 @@ struct CleanPlanDTO: Codable, Equatable {
 struct TrashedItemDTO: Codable, Equatable {
     let path: String
     let category: String
+    let risk: String
     let bytes: Int64
     let note: String?
 }

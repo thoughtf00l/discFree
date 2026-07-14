@@ -68,7 +68,10 @@ extension DiscFree {
 
         private func emitPlan(_ planned: [DevSelection.Item]) throws {
             let dtos = planned.map {
-                DevItemDTO(path: $0.path, category: $0.category.rawValue, bytes: $0.bytes)
+                DevItemDTO(
+                    path: $0.path, category: $0.category.rawValue,
+                    risk: $0.category.riskToken, bytes: $0.bytes
+                )
             }
             let total = dtos.reduce(Int64(0)) { $0 + $1.bytes }
             let hint = "re-run with --yes to move these to Trash"
@@ -94,23 +97,27 @@ extension DiscFree {
 
             for item in planned {
                 let category = item.category.rawValue
+                let risk = item.category.riskToken
                 // A path that vanished between scan and trash is success-with-note, not failure.
                 if !fileManager.fileExists(atPath: item.path) {
                     trashed.append(TrashedItemDTO(
-                        path: item.path, category: category, bytes: item.bytes, note: "already gone"
+                        path: item.path, category: category, risk: risk,
+                        bytes: item.bytes, note: "already gone"
                     ))
                     continue
                 }
                 do {
                     try fileManager.trashItem(at: URL(fileURLWithPath: item.path), resultingItemURL: nil)
                     trashed.append(TrashedItemDTO(
-                        path: item.path, category: category, bytes: item.bytes, note: nil
+                        path: item.path, category: category, risk: risk,
+                        bytes: item.bytes, note: nil
                     ))
                     reclaimed += item.bytes
                 } catch {
                     if !fileManager.fileExists(atPath: item.path) {
                         trashed.append(TrashedItemDTO(
-                            path: item.path, category: category, bytes: item.bytes, note: "already gone"
+                            path: item.path, category: category, risk: risk,
+                            bytes: item.bytes, note: "already gone"
                         ))
                     } else {
                         failed.append(FailedItemDTO(

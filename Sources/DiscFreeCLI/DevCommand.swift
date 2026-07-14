@@ -42,13 +42,18 @@ extension DiscFree {
                 categories: nil,
                 minSize: minBytes
             )
-            let dtos = items.map { DevItemDTO(path: $0.path, category: $0.category.rawValue, bytes: $0.bytes) }
+            let dtos = items.map {
+                DevItemDTO(
+                    path: $0.path, category: $0.category.rawValue,
+                    risk: $0.category.riskToken, bytes: $0.bytes
+                )
+            }
             let total = dtos.reduce(Int64(0)) { $0 + $1.bytes }
 
             if json {
                 Output.line(try Output.json(DevResultDTO(items: dtos, total_bytes: total)))
             } else {
-                Output.line(HumanTables.devItems(dtos, totalBytes: total))
+                Output.line(HumanTables.devItemsByCategory(items))
             }
         }
     }
