@@ -87,6 +87,12 @@ final class AppModel {
     /// thread once per scan and after each deletion — never walked per frame.
     private(set) var unreadableCount: Int = 0
 
+    /// Free space on the volume holding the scan root, including purgeable space (the figure
+    /// Finder reports, via `volumeAvailableCapacityForImportantUsage`). Nil when unreadable.
+    /// Refreshed at scan start, on each tree adoption, and after every successful trash — reading
+    /// one resource value is cheap, so no timer.
+    private(set) var freeSpaceBytes: Int64?
+
     /// When the tree on screen was produced by a scan. Comes from the snapshot header when
     /// the tree was loaded from cache, or "now" when a scan finishes.
     private(set) var lastScanDate: Date?
@@ -118,6 +124,9 @@ final class AppModel {
     private var refreshTask: Task<Void, Never>?
     private var snapshotSaveTask: Task<Void, Never>?
     private var didAttemptResume = false
+    /// URL of the current scan root, kept so free space can be re-read after a trash (which has
+    /// no URL in hand) without re-deriving it from the tree.
+    private var scanRootURL: URL?
 
     init() {
         refreshFullDiskAccess()
@@ -155,6 +164,9 @@ final class AppModel {
             }.value
             guard let self, let loaded, self.phase == .idle, self.root == nil else { return }
 
+            let rootURL = URL(fileURLWithPath: loaded.entry.header.rootPath)
+            self.scanRootURL = rootURL
+            self.refreshFreeSpace()
             self.root = loaded.tree
             self.lastScanDate = loaded.entry.header.scanDate
             self.setFocus(loaded.tree)
@@ -162,7 +174,7 @@ final class AppModel {
             self.recountUnreadable(in: loaded.tree)
             self.classify(loaded.tree)
             self.startBackgroundRefresh(
-                at: URL(fileURLWithPath: loaded.entry.header.rootPath),
+                at: rootURL,
                 expectedBytes: loaded.entry.header.totalBytes
             )
         }
@@ -176,6 +188,8 @@ final class AppModel {
         phase = .scanning
         scanActive = true
         liveScan = nil
+        scanRootURL = url
+        refreshFreeSpace()
         progress = ScanProgress(itemsScanned: 0, bytesAccumulated: 0, currentPath: url.path)
         root = nil
         focus = nil
@@ -236,6 +250,8 @@ final class AppModel {
         scanActive = false
         liveScan = nil
         lastScanDate = nil
+        scanRootURL = nil
+        freeSpaceBytes = nil
         phase = .idle
         root = nil
         focus = nil
@@ -322,6 +338,7 @@ final class AppModel {
         setFocus(TreePath.resolve(focusComponents, in: tree))
         phase = .result
         lastScanDate = Date()
+        refreshFreeSpace()
         recountUnreadable(in: tree)
         classify(tree)
         saveSnapshot(of: tree)
@@ -390,6 +407,7 @@ final class AppModel {
         setFocus(TreePath.resolve(focusComponents, in: tree))
         lastScanDate = Date()
         refreshProgress = nil
+        refreshFreeSpace()
         recountUnreadable(in: tree)
         classify(tree)
         saveSnapshot(of: tree)
@@ -450,6 +468,7 @@ final class AppModel {
             try FileManager.default.trashItem(at: URL(fileURLWithPath: node.path), resultingItemURL: nil)
             try TreeEditor.remove(node, keeping: focus)
             rebuild(for: focus)
+            refreshFreeSpace()
             if let root {
                 recountUnreadable(in: root)
                 // Re-classify: deleting inside a dev root leaves ancestor devSize stale, and
@@ -683,6 +702,7 @@ final class AppModel {
         }
 
         rebuild(for: focus)
+        refreshFreeSpace()
         recountUnreadable(in: root)
         classify(root)  // re-classifies and recomputes reclaimGroups
         saveSnapshot(of: root)
@@ -726,6 +746,20 @@ final class AppModel {
     /// Whether the app has read enough of the disk to be complete.
     var isFullDiskAccessMissing: Bool {
         fullDiskAccess == .denied
+    }
+
+    /// Re-reads the scan root volume's important-usage available capacity (the Finder figure,
+    /// purgeable space included) and publishes it. Cheap enough to run inline on the main thread;
+    /// degrades to nil when there is no root URL or the value can't be read.
+    private func refreshFreeSpace() {
+        guard let scanRootURL else {
+            freeSpaceBytes = nil
+            return
+        }
+        let values = try? scanRootURL.resourceValues(
+            forKeys: [.volumeAvailableCapacityForImportantUsageKey]
+        )
+        freeSpaceBytes = values?.volumeAvailableCapacityForImportantUsage
     }
 
     /// Counts unreadable directories across the whole tree off the main thread.

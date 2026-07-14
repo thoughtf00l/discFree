@@ -5,6 +5,11 @@ struct VolumeInfo: Identifiable {
     let url: URL
     let name: String
     let isInternal: Bool
+    /// Total volume size in bytes; nil when the resource value is unavailable.
+    let totalCapacity: Int64?
+    /// Free space in bytes, including purgeable space (the figure Finder reports); nil when
+    /// unavailable.
+    let freeCapacity: Int64?
     var id: URL { url }
 }
 
@@ -23,7 +28,10 @@ enum FolderPicker {
     }
 
     static func mountedVolumes() -> [VolumeInfo] {
-        let keys: [URLResourceKey] = [.volumeNameKey, .volumeIsBrowsableKey, .volumeIsInternalKey]
+        let keys: [URLResourceKey] = [
+            .volumeNameKey, .volumeIsBrowsableKey, .volumeIsInternalKey,
+            .volumeTotalCapacityKey, .volumeAvailableCapacityForImportantUsageKey,
+        ]
         let manager = FileManager.default
         guard let urls = manager.mountedVolumeURLs(
             includingResourceValuesForKeys: keys, options: [.skipHiddenVolumes]
@@ -35,7 +43,9 @@ enum FolderPicker {
             return VolumeInfo(
                 url: url,
                 name: values?.volumeName ?? url.lastPathComponent,
-                isInternal: values?.volumeIsInternal ?? true
+                isInternal: values?.volumeIsInternal ?? true,
+                totalCapacity: values?.volumeTotalCapacity.map(Int64.init),
+                freeCapacity: values?.volumeAvailableCapacityForImportantUsage
             )
         }
     }

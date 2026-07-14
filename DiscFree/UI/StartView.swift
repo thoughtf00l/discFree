@@ -45,7 +45,7 @@ struct StartView: View {
                                 Image(systemName: volume.isInternal ? "internaldrive" : "externaldrive")
                                 VStack(alignment: .leading, spacing: 1) {
                                     Text(volume.name)
-                                    Text(volume.url.path)
+                                    Text(caption(for: volume))
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
@@ -73,5 +73,14 @@ struct StartView: View {
         if let url = FolderPicker.chooseDirectory() {
             model.startScan(at: url)
         }
+    }
+
+    /// A volume row's second line: the mount path, plus a "· NN.N GB free of NNN.N GB" suffix
+    /// when both capacities are known. Missing values drop the suffix and leave the path alone.
+    private func caption(for volume: VolumeInfo) -> String {
+        guard let free = volume.freeCapacity, let total = volume.totalCapacity else {
+            return volume.url.path
+        }
+        return "\(volume.url.path) · \(byteString(free)) free of \(byteString(total))"
     }
 }

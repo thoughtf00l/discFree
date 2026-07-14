@@ -82,6 +82,12 @@ struct ResultView: View {
                 } label: {
                     Label("New Scan", systemImage: "arrow.left")
                 }
+                if let free = model.freeSpaceBytes {
+                    Text("\(byteString(free)) free")
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                        .help("Free space on this volume, including purgeable space — the figure Finder shows. Items moved to the Trash free space only once the Trash is emptied.")
+                }
                 Spacer()
                 if model.unreadableCount > 0 {
                     UnreadableIndicator(
