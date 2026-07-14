@@ -1,0 +1,53 @@
+{
+  "color-space-for-untagged-svg-colors" : "display-p3",
+  "fill-specializations" : [
+    {
+      "value" : "system-light"
+    },
+    {
+      "appearance" : "dark",
+      "value" : "system-dark"
+    }
+  ],
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "fill" : {
+            "linear-gradient" : [
+              "display-p3:0.55486,0.25455,1.00000,1.00000",
+              "display-p3:0.96783,0.28176,0.37516,1.00000"
+            ],
+            "orientation" : {
+              "start" : {
+                "x" : 0.15628411572052403,
+                "y" : 0.29094749273255816
+              },
+              "stop" : {
+                "x" : 0.8250773289665211,
+                "y" : 0.7457757994186046
+              }
+            }
+          },
+          "glass" : true,
+          "image-name" : "ring.svg",
+          "name" : "ring"
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : false,
+        "value" : 0.5
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "squares" : [
+      "macOS"
+    ]
+  }
+}
