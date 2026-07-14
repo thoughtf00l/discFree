@@ -43,6 +43,24 @@ extension DevCategory {
         }
     }
 
+    /// Short human-readable label for this category, for a category-first list.
+    public var displayName: String {
+        switch self {
+        case .xcodeBuild:
+            return "Xcode build products"
+        case .xcodeArchives:
+            return "Xcode archives"
+        case .simulators:
+            return "Simulators"
+        case .packageCache:
+            return "Package caches"
+        case .projectArtifacts:
+            return "Project build artifacts"
+        case .docker:
+            return "Docker VM disks"
+        }
+    }
+
     /// One plain-language sentence explaining what happens if an item of this category is trashed.
     public var consequence: String {
         switch self {
