@@ -25,20 +25,14 @@ final class SunburstLayoutTests: XCTestCase {
         segments.first { $0.node === node }
     }
 
-    private func extent(_ segment: SunburstSegment) -> Double {
-        segment.endAngle - segment.startAngle
-    }
-
-    // MARK: - .devOnly effective sizing
-
     /// A focus (not inside a dev item) with:
     /// - `node_modules`  → dev root, alloc 1000 (dep1 600 + dep2 400)
     /// - `proj`          → not dev; holds an inner `node_modules` (300) + `src.js` (100), so
-    ///                     alloc 400 but dev 300
+    ///                     alloc 400 but dev 300 (reclaimable share 0.75)
     /// - `notes.txt`     → non-dev file, dev 0
-    private func devOnlyFixture() -> (focus: FileNode, nodeModules: FileNode, dep1: FileNode,
-                                      dep2: FileNode, proj: FileNode, innerNM: FileNode,
-                                      srcJS: FileNode, notes: FileNode) {
+    private func classifiedFixture() -> (focus: FileNode, nodeModules: FileNode, dep1: FileNode,
+                                         dep2: FileNode, proj: FileNode, innerNM: FileNode,
+                                         srcJS: FileNode, notes: FileNode) {
         let dep1 = file("dep1", 600)
         let dep2 = file("dep2", 400)
         let nodeModules = dir("node_modules", [dep1, dep2])              // dev root, 1000
@@ -54,57 +48,99 @@ final class SunburstLayoutTests: XCTestCase {
         return (focus, nodeModules, dep1, dep2, proj, innerNM, srcJS, notes)
     }
 
-    func testDevOnlyAnglesUseDevSizeAndSkipZeroDevSubtrees() {
-        let f = devOnlyFixture()
-        let segments = SunburstLayout.build(focus: f.focus, mode: .devOnly)
+    // MARK: - Sizing (always allocatedSize)
 
-        // The non-dev file is skipped entirely.
-        XCTAssertNil(segment(for: f.notes, in: segments), "a zero-dev subtree must be skipped")
-
-        // Top-level angles are proportional to effective dev sizes (1000 vs 300), not
-        // allocated sizes (1000 vs 400). Total angle for the two included branches is 2π.
-        let nm = try! XCTUnwrap(segment(for: f.nodeModules, in: segments))
-        let proj = try! XCTUnwrap(segment(for: f.proj, in: segments))
-        XCTAssertEqual(extent(nm) / extent(proj), 1000.0 / 300.0, accuracy: 0.001)
-        XCTAssertEqual(extent(nm) + extent(proj), 2 * .pi, accuracy: 0.001)
+    func testFocusDisplayTotalIsAllocatedSize() {
+        let f = classifiedFixture()
+        XCTAssertEqual(SunburstLayout.focusDisplayTotal(focus: f.focus), 1900)
     }
 
-    func testDevOnlyUsesAllocatedSizeInsideADevRoot() {
-        let f = devOnlyFixture()
-        let segments = SunburstLayout.build(focus: f.focus, mode: .devOnly)
+    func testRowsIncludeEveryChildByAllocatedSize() {
+        let f = classifiedFixture()
+        let rows = SunburstLayout.rows(focus: f.focus)
 
-        // dep1/dep2 live inside the dev root, so they are drawn and sized by allocatedSize.
-        let dep1 = try! XCTUnwrap(segment(for: f.dep1, in: segments))
-        let dep2 = try! XCTUnwrap(segment(for: f.dep2, in: segments))
-        XCTAssertEqual(extent(dep1) / extent(dep2), 600.0 / 400.0, accuracy: 0.001)
-        XCTAssertTrue(dep1.isDev)
-        XCTAssertTrue(dep2.isDev)
+        XCTAssertEqual(rows.map { ObjectIdentifier($0.node) },
+                       [f.nodeModules, f.notes, f.proj].map(ObjectIdentifier.init))
+        XCTAssertEqual(rows.map(\.displaySize), [1000, 500, 400])
+        // A container that merely holds dev items is not itself dev (drives trash consequence text).
+        XCTAssertEqual(rows.map(\.isDev), [true, false, false])
     }
 
-    func testDevOnlySkipsNonDevSiblingInsideAContainer() {
-        let f = devOnlyFixture()
-        let segments = SunburstLayout.build(focus: f.focus, mode: .devOnly)
+    // MARK: - Highlight tinting
 
-        // Under `proj` only the inner node_modules (dev) is drawn; src.js (dev 0) is skipped.
-        XCTAssertNotNil(segment(for: f.innerNM, in: segments))
-        XCTAssertNil(segment(for: f.srcJS, in: segments), "a non-dev file inside a container is skipped")
+    /// Toggling highlight never moves a slice: geometry is `allocatedSize` in both cases. With
+    /// highlighting off every fraction is forced to 1 so `color` renders the full branch color.
+    func testHighlightPreservesGeometryAndForcesFullColorWhenOff() {
+        let f = classifiedFixture()
+        let plain = SunburstLayout.build(focus: f.focus, highlight: false)
+        let highlight = SunburstLayout.build(focus: f.focus, highlight: true)
 
-        // The inner node_modules fills its parent's full arc (its 300 == proj's dev total).
-        let proj = try! XCTUnwrap(segment(for: f.proj, in: segments))
-        let inner = try! XCTUnwrap(segment(for: f.innerNM, in: segments))
-        XCTAssertEqual(extent(inner), extent(proj), accuracy: 0.001)
+        XCTAssertEqual(plain.count, highlight.count)
+        for node in [f.nodeModules, f.proj, f.notes, f.dep1, f.dep2, f.innerNM, f.srcJS] {
+            let p = try! XCTUnwrap(segment(for: node, in: plain))
+            let h = try! XCTUnwrap(segment(for: node, in: highlight))
+            XCTAssertEqual(p.startAngle, h.startAngle, accuracy: 1e-9)
+            XCTAssertEqual(p.endAngle, h.endAngle, accuracy: 1e-9)
+        }
+        XCTAssertTrue(plain.allSatisfy { $0.reclaimableFraction == 1 })
     }
 
-    func testFocusDisplayTotalIsEffectiveDevTotalInDevOnly() {
-        let f = devOnlyFixture()
-        XCTAssertEqual(SunburstLayout.focusDisplayTotal(focus: f.focus, mode: .devOnly), 1300)
-        XCTAssertEqual(SunburstLayout.focusDisplayTotal(focus: f.focus, mode: .all), 1900)
-        XCTAssertEqual(SunburstLayout.focusDisplayTotal(focus: f.focus, mode: .devHighlight), 1900)
+    /// Each segment's fraction reflects its reclaimable share: 1 for a dev item and its
+    /// descendants, `devSize / allocatedSize` for a container, 0 for clean content.
+    func testHighlightFractionsReflectReclaimableShare() {
+        let f = classifiedFixture()
+        let segments = SunburstLayout.build(focus: f.focus, highlight: true)
+
+        // Dev item → exactly 1, and so is every descendant inside it.
+        XCTAssertEqual(try! XCTUnwrap(segment(for: f.nodeModules, in: segments)).reclaimableFraction,
+                       1, accuracy: 1e-9)
+        XCTAssertEqual(try! XCTUnwrap(segment(for: f.dep1, in: segments)).reclaimableFraction,
+                       1, accuracy: 1e-9)
+        // Container with mixed content → its reclaimable share (300 / 400).
+        XCTAssertEqual(try! XCTUnwrap(segment(for: f.proj, in: segments)).reclaimableFraction,
+                       0.75, accuracy: 1e-9)
+        // Clean file → 0 (renders gray).
+        XCTAssertEqual(try! XCTUnwrap(segment(for: f.notes, in: segments)).reclaimableFraction,
+                       0, accuracy: 1e-9)
     }
 
-    // MARK: - .devHighlight isDev flag threading
+    /// The bug this replaces: a container whose only reclaimable content sits deeper than the
+    /// visible rings used to render all-gray. Now it gets a partial fraction (strictly between
+    /// 0 and 1) even though the buried dev item is never drawn.
+    func testHighlightTintsContainerWithDeepJunkPartially() {
+        let deepNM = dir("node_modules", [file("dep", 200)])            // dev root, 200
+        // Bury it deeper than SunburstLayout.maxDepth (5) below the container.
+        var buried: FileNode = deepNM
+        for level in (1...6).reversed() {
+            buried = dir("level\(level)", [buried])
+        }
+        let plain = file("data.bin", 800)
+        let container = dir("container", [buried, plain])               // alloc 1000, dev 200
+        let clean = file("readme.txt", 500)                             // dev 0
+        let focus = dir("/work", [container, clean])
 
-    func testDevHighlightThreadsIsDevThroughADevRoot() {
+        DevClassifier.classify(focus, using: catalog)
+        let segments = SunburstLayout.build(focus: focus, highlight: true)
+
+        // The container is not itself a dev item, but its reclaimable share (200 / 1000)
+        // tints it between gray and full color.
+        let containerSeg = try! XCTUnwrap(segment(for: container, in: segments))
+        XCTAssertFalse(containerSeg.isDev)
+        XCTAssertGreaterThan(containerSeg.reclaimableFraction, 0)
+        XCTAssertLessThan(containerSeg.reclaimableFraction, 1)
+        XCTAssertEqual(containerSeg.reclaimableFraction, 0.2, accuracy: 1e-9)
+
+        // A clean sibling stays gray.
+        XCTAssertEqual(try! XCTUnwrap(segment(for: clean, in: segments)).reclaimableFraction, 0)
+
+        // The buried dev item is beyond maxDepth, so it is never drawn — the container's tint is
+        // the only on-screen signal that junk exists below.
+        XCTAssertNil(segment(for: deepNM, in: segments))
+    }
+
+    // MARK: - isDev flag threading
+
+    func testHighlightThreadsIsDevThroughADevRoot() {
         // container (not dev) → node_modules (dev root) → sub → mod.js
         let mod = file("mod.js", 100)
         let sub = dir("sub", [mod])
@@ -114,80 +150,28 @@ final class SunburstLayoutTests: XCTestCase {
         let focus = dir("/work", [container, plain])
 
         DevClassifier.classify(focus, using: catalog)
-        let segments = SunburstLayout.build(focus: focus, mode: .devHighlight)
+        let segments = SunburstLayout.build(focus: focus, highlight: true)
 
-        // A container of a dev item is not itself dev, and is grayed.
+        // A container of a dev item is not itself dev. Here its content is entirely reclaimable
+        // (devSize == allocatedSize), so its fraction is 1.
         let containerSeg = try! XCTUnwrap(segment(for: container, in: segments))
         XCTAssertFalse(containerSeg.isDev)
-        XCTAssertTrue(containerSeg.grayed)
+        XCTAssertEqual(containerSeg.reclaimableFraction, 1, accuracy: 1e-9)
 
-        // The dev root and every descendant are dev, and keep their colors.
+        // The dev root and every descendant are dev, with fraction 1.
         let nmSeg = try! XCTUnwrap(segment(for: nodeModules, in: segments))
         XCTAssertTrue(nmSeg.isDev)
-        XCTAssertFalse(nmSeg.grayed)
+        XCTAssertEqual(nmSeg.reclaimableFraction, 1, accuracy: 1e-9)
 
         let subSeg = try! XCTUnwrap(segment(for: sub, in: segments))
         XCTAssertTrue(subSeg.isDev, "a descendant of a dev root is dev")
-        XCTAssertFalse(subSeg.grayed)
 
         let modSeg = try! XCTUnwrap(segment(for: mod, in: segments))
         XCTAssertTrue(modSeg.isDev)
 
-        // A plain non-dev sibling is grayed.
+        // A plain non-dev sibling has no reclaimable content → fraction 0.
         let plainSeg = try! XCTUnwrap(segment(for: plain, in: segments))
         XCTAssertFalse(plainSeg.isDev)
-        XCTAssertTrue(plainSeg.grayed)
-    }
-
-    func testDevHighlightGeometryMatchesAll() {
-        // Same sizes/angles as .all; only coloring differs.
-        let f = devOnlyFixture()
-        let all = SunburstLayout.build(focus: f.focus, mode: .all)
-        let highlight = SunburstLayout.build(focus: f.focus, mode: .devHighlight)
-
-        XCTAssertEqual(all.count, highlight.count)
-        for node in [f.nodeModules, f.proj, f.notes, f.dep1, f.dep2, f.innerNM, f.srcJS] {
-            let a = try! XCTUnwrap(segment(for: node, in: all))
-            let h = try! XCTUnwrap(segment(for: node, in: highlight))
-            XCTAssertEqual(a.startAngle, h.startAngle, accuracy: 1e-9)
-            XCTAssertEqual(a.endAngle, h.endAngle, accuracy: 1e-9)
-        }
-        // .all never grays anything.
-        XCTAssertFalse(all.contains { $0.grayed })
-    }
-
-    // MARK: - Rows per mode
-
-    func testRowsAllModeIncludesEveryChildByAllocatedSize() {
-        let f = devOnlyFixture()
-        let rows = SunburstLayout.rows(focus: f.focus, mode: .all)
-
-        XCTAssertEqual(rows.map { ObjectIdentifier($0.node) },
-                       [f.nodeModules, f.notes, f.proj].map(ObjectIdentifier.init))
-        XCTAssertEqual(rows.map(\.displaySize), [1000, 500, 400])
-        XCTAssertEqual(rows.map(\.isDev), [true, false, false])
-    }
-
-    func testRowsDevHighlightMatchesAll() {
-        let f = devOnlyFixture()
-        let all = SunburstLayout.rows(focus: f.focus, mode: .all)
-        let highlight = SunburstLayout.rows(focus: f.focus, mode: .devHighlight)
-
-        XCTAssertEqual(all.map { ObjectIdentifier($0.node) },
-                       highlight.map { ObjectIdentifier($0.node) })
-        XCTAssertEqual(all.map(\.displaySize), highlight.map(\.displaySize))
-        XCTAssertEqual(all.map(\.isDev), highlight.map(\.isDev))
-    }
-
-    func testRowsDevOnlyDropsNonDevAndUsesEffectiveSize() {
-        let f = devOnlyFixture()
-        let rows = SunburstLayout.rows(focus: f.focus, mode: .devOnly)
-
-        // notes.txt (dev 0) is dropped; effective dev sizes drive both value and order.
-        XCTAssertEqual(rows.map { ObjectIdentifier($0.node) },
-                       [f.nodeModules, f.proj].map(ObjectIdentifier.init))
-        XCTAssertEqual(rows.map(\.displaySize), [1000, 300])
-        // A container that merely holds dev items is not itself dev (drives trash gating).
-        XCTAssertEqual(rows.map(\.isDev), [true, false])
+        XCTAssertEqual(plainSeg.reclaimableFraction, 0, accuracy: 1e-9)
     }
 }

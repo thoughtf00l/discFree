@@ -3,16 +3,6 @@ import Observation
 import AppKit
 import DiscFreeCore
 
-/// How the sunburst and contents panel present the tree.
-enum DisplayMode: Sendable {
-    /// Every node, sized by `allocatedSize`. The default.
-    case all
-    /// Same geometry and sizes as `.all`, but nodes outside a dev item are drawn gray.
-    case devHighlight
-    /// Only developer-reclaimable items, sized by their dev bytes.
-    case devOnly
-}
-
 /// Drives the whole app: the start → scanning → result state machine, the scan task and
 /// its cancellation, and the (off-main-thread) sunburst layout for the current focus node.
 @MainActor
@@ -37,17 +27,17 @@ final class AppModel {
     private(set) var root: FileNode?
     private(set) var segments: [SunburstSegment] = []
 
-    /// The focus node's direct children as panel rows, sized and filtered for `displayMode`.
+    /// The focus node's direct children as panel rows.
     private(set) var rows: [ContentsPanelRow] = []
 
-    /// The size shown for the current focus in `displayMode` (its `allocatedSize`, or its
-    /// effective dev total in `.devOnly`). Drives share bars, the center label, and the status.
+    /// The current focus's `allocatedSize`. Drives share bars, the center label, and the status.
     private(set) var focusDisplayTotal: Int64 = 0
 
-    /// The presentation mode. Changing it recomputes the layout for the current focus.
-    var displayMode: DisplayMode = .all {
+    /// Whether the sunburst tints each segment by its reclaimable share instead of drawing full
+    /// branch colors. Toggling it recomputes the layout for the current focus.
+    var highlightReclaimable: Bool = false {
         didSet {
-            guard displayMode != oldValue, let focus else { return }
+            guard highlightReclaimable != oldValue, let focus else { return }
             rebuild(for: focus)
         }
     }
@@ -290,16 +280,16 @@ final class AppModel {
     }
 
     /// Recomputes the sunburst segments, the panel rows, and the focus's display total for
-    /// `node` in the current mode, off the main thread.
+    /// `node`, off the main thread.
     private func rebuild(for node: FileNode) {
         layoutTask?.cancel()
-        let mode = displayMode
+        let highlight = highlightReclaimable
         layoutTask = Task { [weak self] in
             let result = await Task.detached(priority: .userInitiated) {
                 () -> (segments: [SunburstSegment], rows: [ContentsPanelRow], total: Int64) in
-                let segments = SunburstLayout.build(focus: node, mode: mode)
-                let rows = SunburstLayout.rows(focus: node, mode: mode)
-                let total = SunburstLayout.focusDisplayTotal(focus: node, mode: mode)
+                let segments = SunburstLayout.build(focus: node, highlight: highlight)
+                let rows = SunburstLayout.rows(focus: node)
+                let total = SunburstLayout.focusDisplayTotal(focus: node)
                 return (segments, rows, total)
             }.value
             guard !Task.isCancelled else { return }
@@ -337,10 +327,11 @@ final class AppModel {
         saveSnapshot(of: tree)
     }
 
-    /// Classifies the tree against the dev-item catalog off the main thread, then rebuilds if
-    /// the current mode depends on the result. Mirrors `recountUnreadable`'s cancel-and-replace
-    /// pattern: a later trash may mutate the tree, so an in-flight pass is cancelled and reissued
-    /// on the mutated tree rather than serialized against it.
+    /// Classifies the tree against the dev-item catalog off the main thread, then rebuilds when
+    /// highlighting is on (the segment tints depend on the classification). Mirrors
+    /// `recountUnreadable`'s cancel-and-replace pattern: a later trash may mutate the tree, so an
+    /// in-flight pass is cancelled and reissued on the mutated tree rather than serialized
+    /// against it.
     private func classify(_ tree: FileNode) {
         classifyTask?.cancel()
         let catalog = catalog
@@ -349,7 +340,7 @@ final class AppModel {
                 DevClassifier.classify(tree, using: catalog)
             }.value
             guard !Task.isCancelled, let self else { return }
-            if self.displayMode != .all, let focus = self.focus {
+            if self.highlightReclaimable, let focus = self.focus {
                 self.rebuild(for: focus)
             }
             // Classification is the data source for the reclaim summary: every finish/adopt/trash

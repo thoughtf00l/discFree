@@ -73,9 +73,8 @@ struct SunburstGeometry {
 struct SunburstView: View {
     let segments: [SunburstSegment]
     let focus: FileNode
-    /// The focus's size for the current mode (its effective dev total in `.devOnly`).
+    /// The focus's `allocatedSize`, shown in the center label.
     let focusTotal: Int64
-    let mode: DisplayMode
     let onDrill: (FileNode) -> Void
     let onAscend: () -> Void
 
@@ -108,9 +107,9 @@ struct SunburstView: View {
     @ViewBuilder
     private func centerLabel(_ geometry: SunburstGeometry) -> some View {
         let shown = hovered ?? focus
-        // The focus total is precomputed for the mode; a hovered node's effective size is
-        // resolved on demand (only while hovering a single node).
-        let shownSize = shown === focus ? focusTotal : displaySize(shown)
+        // The focus total is precomputed; a hovered node's size is read on demand (only while
+        // hovering a single node).
+        let shownSize = shown === focus ? focusTotal : shown.allocatedSize
         VStack(spacing: 3) {
             Text(shown.displayName)
                 .font(.headline)
@@ -160,17 +159,6 @@ struct SunburstView: View {
     private func segment(at hit: (depth: Int, angle: Double)) -> SunburstSegment? {
         segments.first {
             $0.depth == hit.depth && hit.angle >= $0.startAngle && hit.angle < $0.endAngle
-        }
-    }
-
-    /// The size shown for a hovered node, matching the slice it labels. In `.devOnly` this is
-    /// the node's effective dev size, so the text agrees with the drawn angle.
-    private func displaySize(_ node: FileNode) -> Int64 {
-        switch mode {
-        case .all, .devHighlight:
-            return node.allocatedSize
-        case .devOnly:
-            return DevClassifier.isWithinDevItem(node) ? node.allocatedSize : node.devSize
         }
     }
 }

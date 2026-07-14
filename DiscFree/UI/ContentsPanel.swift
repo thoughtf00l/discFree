@@ -5,7 +5,6 @@ import DiscFreeCore
 struct ContentsPanel: View {
     let focusTotal: Int64
     let rows: [ContentsPanelRow]
-    let mode: DisplayMode
     /// While a foreground scan is still running the tree is mutating and sizes are lower bounds,
     /// so the Move-to-Trash affordance is hidden (the model guards it too).
     let scanActive: Bool
@@ -20,7 +19,6 @@ struct ContentsPanel: View {
                 ContentsRow(
                     row: row,
                     focusTotal: focusTotal,
-                    mode: mode,
                     hue: rows.count > 0 ? Double(index) / Double(rows.count) : 0,
                     isHovered: hovered === row.node
                 )
@@ -36,10 +34,9 @@ struct ContentsPanel: View {
                     } label: {
                         Label("Reveal in Finder", systemImage: "magnifyingglass")
                     }
-                    // In .devOnly a container that merely holds dev items must not offer Trash:
-                    // trashing it would delete the non-dev content the mode hides. And never
-                    // while a scan is still running (sizes are lower bounds, tree is mutating).
-                    if !scanActive && (mode != .devOnly || row.isDev) {
+                    // Never offer Trash while a scan is still running: sizes are lower bounds
+                    // and the tree is still mutating.
+                    if !scanActive {
                         Button(role: .destructive) {
                             onTrash(row.node)
                         } label: {
@@ -56,7 +53,6 @@ struct ContentsPanel: View {
 private struct ContentsRow: View {
     let row: ContentsPanelRow
     let focusTotal: Int64
-    let mode: DisplayMode
     let hue: Double
     let isHovered: Bool
 
@@ -68,9 +64,6 @@ private struct ContentsRow: View {
 
     private var swatch: Color {
         if node.isUnreadable { return Color(white: 0.55) }
-        // Match the sunburst: non-dev rows go gray in .devHighlight, kept distinct from the
-        // unreadable gray by a lighter shade.
-        if mode == .devHighlight && !row.isDev { return Color(hue: 0, saturation: 0, brightness: 0.72) }
         return Color(hue: hue, saturation: 0.7, brightness: 0.82)
     }
 

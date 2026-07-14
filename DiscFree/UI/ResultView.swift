@@ -13,14 +13,10 @@ struct ResultView: View {
                 BreadcrumbBar(path: model.focusPath) { model.jump(to: $0) }
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                Picker("Display mode", selection: displayModeBinding) {
-                    Text("All").tag(DisplayMode.all)
-                    Text("Reclaimable").tag(DisplayMode.devHighlight)
-                    Text("Reclaimable Only").tag(DisplayMode.devOnly)
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .fixedSize()
+                Toggle("Highlight reclaimable", isOn: highlightBinding)
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                    .fixedSize()
 
                 Button {
                     model.reclaimPresented = true
@@ -51,34 +47,28 @@ struct ResultView: View {
             }
 
             if let focus = model.focus {
-                if model.displayMode == .devOnly && model.focusDisplayTotal == 0 {
-                    emptyDevState
-                } else {
-                    HSplitView {
-                        SunburstView(
-                            segments: model.segments,
-                            focus: focus,
-                            focusTotal: model.focusDisplayTotal,
-                            mode: model.displayMode,
-                            onDrill: { model.drill(into: $0) },
-                            onAscend: { model.ascend() },
-                            hovered: $hovered
-                        )
-                        .frame(minWidth: 320, idealWidth: 480)
-                        .padding(16)
+                HSplitView {
+                    SunburstView(
+                        segments: model.segments,
+                        focus: focus,
+                        focusTotal: model.focusDisplayTotal,
+                        onDrill: { model.drill(into: $0) },
+                        onAscend: { model.ascend() },
+                        hovered: $hovered
+                    )
+                    .frame(minWidth: 320, idealWidth: 480)
+                    .padding(16)
 
-                        ContentsPanel(
-                            focusTotal: model.focusDisplayTotal,
-                            rows: model.rows,
-                            mode: model.displayMode,
-                            scanActive: model.scanActive,
-                            hovered: $hovered,
-                            onDrill: { model.drill(into: $0) },
-                            onReveal: { model.reveal($0) },
-                            onTrash: { model.requestTrash($0) }
-                        )
-                        .frame(minWidth: 300, idealWidth: 360)
-                    }
+                    ContentsPanel(
+                        focusTotal: model.focusDisplayTotal,
+                        rows: model.rows,
+                        scanActive: model.scanActive,
+                        hovered: $hovered,
+                        onDrill: { model.drill(into: $0) },
+                        onReveal: { model.reveal($0) },
+                        onTrash: { model.requestTrash($0) }
+                    )
+                    .frame(minWidth: 300, idealWidth: 360)
                 }
             } else {
                 Spacer()
@@ -146,8 +136,8 @@ struct ResultView: View {
         }
     }
 
-    private var displayModeBinding: Binding<DisplayMode> {
-        Binding(get: { model.displayMode }, set: { model.displayMode = $0 })
+    private var highlightBinding: Binding<Bool> {
+        Binding(get: { model.highlightReclaimable }, set: { model.highlightReclaimable = $0 })
     }
 
     private var reclaimPresentedBinding: Binding<Bool> {
@@ -163,19 +153,6 @@ struct ResultView: View {
             return base + "\n\n" + category.consequence
         }
         return base
-    }
-
-    private var emptyDevState: some View {
-        VStack(spacing: 10) {
-            Spacer()
-            Image(systemName: "wrench.and.screwdriver")
-                .font(.system(size: 34))
-                .foregroundStyle(.tertiary)
-            Text("No reclaimable items in this folder")
-                .foregroundStyle(.secondary)
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
