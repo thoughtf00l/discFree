@@ -288,7 +288,7 @@ final class AppModel {
             let result = await Task.detached(priority: .userInitiated) {
                 () -> (segments: [SunburstSegment], rows: [ContentsPanelRow], total: Int64) in
                 let segments = SunburstLayout.build(focus: node, highlight: highlight)
-                let rows = SunburstLayout.rows(focus: node)
+                let rows = SunburstLayout.rows(focus: node, highlight: highlight)
                 let total = SunburstLayout.focusDisplayTotal(focus: node)
                 return (segments, rows, total)
             }.value

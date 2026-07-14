@@ -45,19 +45,25 @@ struct SunburstSegment: Identifiable, Sendable {
                       brightness: min(1.0, brightness + 0.14))
     }
 
-    /// Blends the full branch color toward the neutral gray (hue 0, saturation 0, same
-    /// brightness ramp) by `sqrt(reclaimableFraction)`: saturation scales toward 0 and
-    /// brightness interpolates toward the gray's value. The `sqrt` gives a perceptual boost so
+    private func tinted(saturation fullSaturation: Double, brightness fullBrightness: Double) -> Color {
+        SunburstSegment.tint(hue: hue, saturation: fullSaturation,
+                             brightness: fullBrightness, fraction: reclaimableFraction)
+    }
+
+    /// Blends the full branch color `(hue, saturation, brightness)` toward its neutral gray
+    /// (same hue, saturation 0, same brightness) by `sqrt(fraction)`: saturation scales toward 0
+    /// and brightness interpolates toward the gray's value. The `sqrt` gives a perceptual boost so
     /// even a small reclaimable share stays visibly warm. Fraction 1 reproduces the full color;
     /// fraction 0 collapses to the plain gray, matching the old all-gray look. (Brightness
     /// blending is a no-op while both endpoints share the ramp, kept general so the blend stays
-    /// correct if they ever diverge.)
-    private func tinted(saturation fullSaturation: Double, brightness fullBrightness: Double) -> Color {
-        let t = min(1, max(0, reclaimableFraction)).squareRoot()
-        let grayBrightness = fullBrightness
+    /// correct if they ever diverge.) Shared by the sunburst segments and the contents-panel rows
+    /// so a node's wedge and its row always tint by the same curve toward the same gray.
+    static func tint(hue: Double, saturation: Double, brightness: Double, fraction: Double) -> Color {
+        let t = min(1, max(0, fraction)).squareRoot()
+        let grayBrightness = brightness
         return Color(hue: hue,
-                     saturation: fullSaturation * t,
-                     brightness: grayBrightness + (fullBrightness - grayBrightness) * t)
+                     saturation: saturation * t,
+                     brightness: grayBrightness + (brightness - grayBrightness) * t)
     }
 }
 
@@ -77,6 +83,11 @@ struct ContentsPanelRow: Identifiable, Sendable {
     let name: String
     /// For the "Other" row, the number of grouped tail items; 0 for a normal row.
     let otherCount: Int
+    /// The row's reclaimable share, mirroring the matching wedge's `reclaimableFraction`: 1 for a
+    /// dev item and its descendants, `devSize / allocatedSize` for a container, the tail's combined
+    /// share for the "Other" row. Only meaningful while highlighting; it is forced to 1 when
+    /// highlighting is off, so the row's swatch reproduces its full color unchanged.
+    let reclaimableFraction: Double
 
     /// True for the synthetic "Other" row (no backing node).
     var isOther: Bool { node == nil }
@@ -139,19 +150,28 @@ enum SunburstLayout {
 
     /// The focus node's direct children as panel rows, sized by `allocatedSize`. The
     /// sub-threshold tail is folded into one trailing "Other" row, mirroring the chart's grouping.
-    static func rows(focus: FileNode) -> [ContentsPanelRow] {
+    /// `highlight` carries the reclaimable share into each row exactly as `build(focus:highlight:)`
+    /// carries it into the wedges, so a row and its wedge tint identically.
+    static func rows(focus: FileNode, highlight: Bool) -> [ContentsPanelRow] {
         guard let children = focus.children else { return [] }
         let focusIsDev = DevClassifier.isWithinDevItem(focus)
         let entries = sortedEntries(of: children, parentIsDev: focusIsDev)
         let (head, tail) = splitTail(entries, focusTotal: focus.allocatedSize)
         var rows = head.map {
             ContentsPanelRow(node: $0.node, displaySize: $0.size, isDev: $0.isDev,
-                             name: $0.node.displayName, otherCount: 0)
+                             name: $0.node.displayName, otherCount: 0,
+                             // Highlighting off: full color, so the fraction is forced to 1.
+                             reclaimableFraction: highlight ? $0.fraction : 1)
         }
         if !tail.isEmpty {
             let size = tail.reduce(Int64(0)) { $0 + $1.size }
+            // Combined reclaimable share of the grouped tail, matching the "Other" wedge in
+            // `appendOther`: `fraction * size` is each entry's reclaimable bytes, summed over size.
+            let devBytes = tail.reduce(0.0) { $0 + $1.fraction * Double($1.size) }
+            let fraction = size > 0 ? devBytes / Double(size) : 0
             rows.append(ContentsPanelRow(node: nil, displaySize: size, isDev: false,
-                                         name: "Other", otherCount: tail.count))
+                                         name: "Other", otherCount: tail.count,
+                                         reclaimableFraction: highlight ? fraction : 1))
         }
         return rows
     }

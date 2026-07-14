@@ -78,7 +78,10 @@ private struct ContentsRow: View {
     private var swatch: Color {
         if row.isOther { return Color(white: 0.6) }  // neutral gray, matching the "Other" wedge
         if row.node?.isUnreadable == true { return Color(white: 0.55) }
-        return Color(hue: hue, saturation: 0.7, brightness: 0.82)
+        // Same blend as the matching sunburst wedge: full color when highlighting is off
+        // (fraction 1), desaturated toward gray by its reclaimable share when on.
+        return SunburstSegment.tint(hue: hue, saturation: 0.7, brightness: 0.82,
+                                    fraction: row.reclaimableFraction)
     }
 
     var body: some View {

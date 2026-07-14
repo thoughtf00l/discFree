@@ -57,7 +57,7 @@ final class SunburstLayoutTests: XCTestCase {
 
     func testRowsIncludeEveryChildByAllocatedSize() {
         let f = classifiedFixture()
-        let rows = SunburstLayout.rows(focus: f.focus)
+        let rows = SunburstLayout.rows(focus: f.focus, highlight: false)
 
         XCTAssertEqual(rows.map { ObjectIdentifier($0.node!) },
                        [f.nodeModules, f.notes, f.proj].map(ObjectIdentifier.init))
@@ -207,7 +207,7 @@ final class SunburstLayoutTests: XCTestCase {
         XCTAssertEqual(maxEnd, 2 * Double.pi, accuracy: 1e-9)
 
         // Panel: the two children, then one trailing "Other — 50 items" row.
-        let rows = SunburstLayout.rows(focus: focus)
+        let rows = SunburstLayout.rows(focus: focus, highlight: false)
         XCTAssertEqual(rows.count, 3)
         XCTAssertEqual(rows.prefix(2).map { ObjectIdentifier($0.node!) },
                        [big1, big2].map(ObjectIdentifier.init))
@@ -232,7 +232,7 @@ final class SunburstLayoutTests: XCTestCase {
         XCTAssertTrue(segments.allSatisfy { !$0.isOther }, "no synthetic wedge for a single tiny entry")
         XCTAssertTrue(segments.allSatisfy { $0.node != nil })
 
-        let rows = SunburstLayout.rows(focus: focus)
+        let rows = SunburstLayout.rows(focus: focus, highlight: false)
         XCTAssertTrue(rows.allSatisfy { !$0.isOther }, "the tiny entry keeps its own row")
         XCTAssertEqual(rows.count, 3)
         XCTAssertNotNil(rows.first { $0.node === tiny })
@@ -260,5 +260,55 @@ final class SunburstLayoutTests: XCTestCase {
         let plain = SunburstLayout.build(focus: focus, highlight: false)
         let plainOther = try! XCTUnwrap(plain.first(where: \.isOther))
         XCTAssertEqual(plainOther.reclaimableFraction, 1, accuracy: 1e-9)
+    }
+
+    // MARK: - Panel rows tint like their matching wedge
+
+    /// Every panel row carries the same reclaimable fraction as the depth-1 wedge for the same
+    /// node, so a row and its wedge blend to the same color. Asserted highlight on and off.
+    func testRowFractionsMatchMatchingSegments() {
+        let f = classifiedFixture()
+
+        // Highlight on: each row's fraction equals its matching depth-1 segment's fraction.
+        let segments = SunburstLayout.build(focus: f.focus, highlight: true)
+        let rows = SunburstLayout.rows(focus: f.focus, highlight: true)
+        for row in rows {
+            let node = try! XCTUnwrap(row.node)            // this fixture has no "Other" row
+            let seg = try! XCTUnwrap(segment(for: node, in: segments))
+            XCTAssertEqual(row.reclaimableFraction, seg.reclaimableFraction, accuracy: 1e-9,
+                           "row \(row.name) must tint like its wedge")
+        }
+        // Sanity: the mix spans the range — dev root 1, mixed container 0.75, clean file 0
+        // (rows are size-sorted: node_modules 1000, notes 500, proj 400).
+        XCTAssertEqual(rows.map(\.reclaimableFraction), [1.0, 0.0, 0.75])
+
+        // Highlight off: every row is forced to full color (fraction 1), like every segment.
+        let plainRows = SunburstLayout.rows(focus: f.focus, highlight: false)
+        XCTAssertTrue(plainRows.allSatisfy { $0.reclaimableFraction == 1 })
+    }
+
+    /// The synthetic "Other" row carries the same combined reclaimable share as the "Other" wedge,
+    /// so the grouped tail tints identically in the panel and the chart. Highlight on and off.
+    func testOtherRowFractionMatchesOtherWedge() {
+        let big1 = file("big1", 120_000)
+        let big2 = file("big2", 100_000)
+        // Four 10 B tail files: two fully reclaimable, two clean → combined share 20 / 40 = 0.5.
+        let devA = file("devA", 10); devA.devSize = 10
+        let devB = file("devB", 10); devB.devSize = 10
+        let cleanA = file("cleanA", 10)
+        let cleanB = file("cleanB", 10)
+        let focus = dir("/work", [big1, big2, devA, devB, cleanA, cleanB])
+
+        let segments = SunburstLayout.build(focus: focus, highlight: true)
+        let rows = SunburstLayout.rows(focus: focus, highlight: true)
+        let otherWedge = try! XCTUnwrap(segments.first(where: \.isOther))
+        let otherRow = try! XCTUnwrap(rows.first(where: \.isOther))
+        XCTAssertEqual(otherRow.reclaimableFraction, otherWedge.reclaimableFraction, accuracy: 1e-9)
+        XCTAssertEqual(otherRow.reclaimableFraction, 0.5, accuracy: 1e-9)
+
+        // Highlight off forces the Other row to fraction 1, like the Other wedge.
+        let plainRows = SunburstLayout.rows(focus: focus, highlight: false)
+        XCTAssertEqual(try! XCTUnwrap(plainRows.first(where: \.isOther)).reclaimableFraction, 1,
+                       accuracy: 1e-9)
     }
 }
