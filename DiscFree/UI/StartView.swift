@@ -15,8 +15,15 @@ struct StartView: View {
                 .foregroundStyle(.tint)
             Text("DiscFree")
                 .font(.largeTitle.bold())
-            Text("Choose a folder to scan")
-                .foregroundStyle(.secondary)
+            VStack(spacing: 4) {
+                Text("Choose a folder to scan")
+                    .foregroundStyle(.secondary)
+                if model.reclaimedTotalBytes > 0 {
+                    Text("\(byteString(model.reclaimedTotalBytes)) reclaimed so far")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+            }
 
             Button(action: chooseFolder) {
                 Label("Choose Folder…", systemImage: "folder")

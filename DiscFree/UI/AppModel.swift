@@ -96,6 +96,13 @@ final class AppModel {
     /// one resource value is cheap, so no timer.
     private(set) var freeSpaceBytes: Int64?
 
+    /// Lifetime total of bytes DiscFree has moved to the Trash on this Mac, summed across all
+    /// sessions. Persisted in `UserDefaults`; only ever incremented, and only by the on-disk size
+    /// of items we actually trashed (never "already gone" paths that vanished on their own).
+    private(set) var reclaimedTotalBytes: Int64
+
+    private static let reclaimedTotalKey = "reclaimedTotalBytes"
+
     /// When the tree on screen was produced by a scan. Comes from the snapshot header when
     /// the tree was loaded from cache, or "now" when a scan finishes.
     private(set) var lastScanDate: Date?
@@ -132,7 +139,16 @@ final class AppModel {
     private var scanRootURL: URL?
 
     init() {
+        reclaimedTotalBytes = Int64(UserDefaults.standard.integer(forKey: Self.reclaimedTotalKey))
         refreshFullDiskAccess()
+    }
+
+    /// Adds `bytes` to the lifetime reclaimed total and writes it through to `UserDefaults`. Called
+    /// only with sizes we actually moved to the Trash; a non-positive delta is ignored.
+    private func addReclaimed(_ bytes: Int64) {
+        guard bytes > 0 else { return }
+        reclaimedTotalBytes += bytes
+        UserDefaults.standard.set(reclaimedTotalBytes, forKey: Self.reclaimedTotalKey)
     }
 
     /// Root-to-focus chain, for the breadcrumb.
@@ -470,7 +486,11 @@ final class AppModel {
         pendingTrash = nil
 
         do {
+            // Capture before `TreeEditor.remove` mutates ancestors; the node's own value is
+            // untouched by remove, but capture early for clarity.
+            let reclaimedBytes = node.allocatedSize
             try FileManager.default.trashItem(at: URL(fileURLWithPath: node.path), resultingItemURL: nil)
+            addReclaimed(reclaimedBytes)
             try TreeEditor.remove(node, keeping: focus)
             rebuild(for: focus)
             refreshFreeSpace()
@@ -681,6 +701,9 @@ final class AppModel {
 
         let fileManager = FileManager.default
         var failures: [(path: String, message: String)] = []
+        // Only bytes we actually moved to the Trash count toward the lifetime total — never
+        // "already gone" or "vanished during the attempt" paths, which we did not reclaim.
+        var reclaimedBytes: Int64 = 0
         for item in items {
             var removeFromTree = false
             if !fileManager.fileExists(atPath: item.path) {
@@ -690,6 +713,7 @@ final class AppModel {
                     try fileManager.trashItem(
                         at: URL(fileURLWithPath: item.path), resultingItemURL: nil
                     )
+                    reclaimedBytes += item.bytes
                     removeFromTree = true
                 } catch {
                     if !fileManager.fileExists(atPath: item.path) {
@@ -706,6 +730,7 @@ final class AppModel {
             }
         }
 
+        addReclaimed(reclaimedBytes)
         rebuild(for: focus)
         refreshFreeSpace()
         recountUnreadable(in: root)

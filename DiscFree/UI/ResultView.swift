@@ -88,6 +88,12 @@ struct ResultView: View {
                         .monospacedDigit()
                         .help("Free space on this volume, including purgeable space — the figure Finder shows. Items moved to the Trash free space only once the Trash is emptied.")
                 }
+                if model.reclaimedTotalBytes > 0 {
+                    Label("\(byteString(model.reclaimedTotalBytes)) reclaimed", systemImage: "sparkles")
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                        .help("Total DiscFree has moved to the Trash on this Mac, across all sessions.")
+                }
                 Spacer()
                 if model.unreadableCount > 0 {
                     UnreadableIndicator(
