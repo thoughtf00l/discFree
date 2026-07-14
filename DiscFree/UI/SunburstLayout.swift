@@ -5,8 +5,17 @@ import DiscFreeCore
 /// tree while rendering — it renders this precomputed array. The `node` reference is
 /// kept only so a click can re-focus without an index lookup.
 struct SunburstSegment: Identifiable, Sendable {
-    let id: ObjectIdentifier
-    let node: FileNode
+    /// Unique within one layout pass (the segment's index in the built array). Real-node segments
+    /// are matched for hover by node identity; the synthetic "Other" wedge — which has no node —
+    /// is matched by this id.
+    let id: Int
+    /// The file-tree node this segment draws, or `nil` for the synthetic "Other" wedge that groups
+    /// a directory's sub-threshold tail.
+    let node: FileNode?
+    /// Label for the center hover readout: the node's `displayName`, or "Other".
+    let label: String
+    /// Size for the center hover readout: the node's `allocatedSize`, or the combined tail bytes.
+    let size: Int64
     let depth: Int          // ring index, 1 = innermost ring outside the hole
     let startAngle: Double  // radians in [0, 2π), 0 = top, increasing clockwise
     let endAngle: Double
@@ -21,6 +30,9 @@ struct SunburstSegment: Identifiable, Sendable {
     /// `allocatedSize == 0`). Only meaningful while highlighting; it is 1 when highlighting is
     /// off, so `color` reproduces the full branch color unchanged.
     let reclaimableFraction: Double
+
+    /// True for the synthetic "Other" wedge (no backing node).
+    var isOther: Bool { node == nil }
 
     var color: Color {
         if isUnreadable { return Color(hue: 0, saturation: 0, brightness: 0.55) }
@@ -53,13 +65,30 @@ struct SunburstSegment: Identifiable, Sendable {
 /// child is a dev item or inside one. Precomputed off the main thread alongside the sunburst
 /// so the panel never walks the tree while rendering.
 struct ContentsPanelRow: Identifiable, Sendable {
-    let node: FileNode
-    /// Size shown for the row: the node's `allocatedSize`.
+    /// The child node this row shows, or `nil` for the synthetic "Other" row that groups a
+    /// directory's sub-threshold tail.
+    let node: FileNode?
+    /// Size shown for the row: the node's `allocatedSize`, or the combined tail bytes.
     let displaySize: Int64
     /// True when the row is a dev-item root or inside one — not merely a container of dev items.
+    /// Always false for the "Other" row.
     let isDev: Bool
+    /// Row label: the node's `displayName`, or "Other".
+    let name: String
+    /// For the "Other" row, the number of grouped tail items; 0 for a normal row.
+    let otherCount: Int
 
-    var id: ObjectIdentifier { ObjectIdentifier(node) }
+    /// True for the synthetic "Other" row (no backing node).
+    var isOther: Bool { node == nil }
+
+    var id: RowID { node.map { RowID.node(ObjectIdentifier($0)) } ?? .other }
+}
+
+/// Stable identity for a contents-panel row within one layout pass. A directory yields at most
+/// one "Other" row, so the `.other` case is unique.
+enum RowID: Hashable, Sendable {
+    case node(ObjectIdentifier)
+    case other
 }
 
 /// Builds the sunburst segment layout for a focus node, limited to a few depth levels
@@ -81,9 +110,12 @@ enum SunburstLayout {
 
         // Depth 1 fills the full circle; each included top-level branch gets a distinct hue.
         let entries = sortedEntries(of: children, parentIsDev: focusIsDev)
-        let branchCount = entries.count
+        let (head, tail) = splitTail(entries, focusTotal: total)
+        // Hue is assigned per drawn depth-1 slot; the panel colors its rows the same way, so the
+        // denominator must match the panel row count (head entries + one "Other" row when grouping).
+        let branchCount = head.count + (tail.isEmpty ? 0 : 1)
         var cursor = 0.0
-        for (index, entry) in entries.enumerated() {
+        for (index, entry) in head.enumerated() {
             let extent = 2 * Double.pi * Double(entry.size) / Double(total)
             let start = cursor
             cursor += extent
@@ -93,17 +125,35 @@ enum SunburstLayout {
                    isDev: entry.isDev, fraction: entry.fraction, highlight: highlight,
                    into: &segments)
             recurse(entry.node, depth: 2, start: start, end: cursor,
-                    hue: hue, nodeIsDev: entry.isDev, highlight: highlight, into: &segments)
+                    hue: hue, nodeIsDev: entry.isDev, focusTotal: total, highlight: highlight,
+                    into: &segments)
+        }
+        // The grouped tail fills the ring from where the drawn head ended to the full circle,
+        // closing the gap the minAngle cull would otherwise leave.
+        if !tail.isEmpty {
+            appendOther(tail, depth: 1, start: cursor, end: 2 * Double.pi,
+                        highlight: highlight, into: &segments)
         }
         return segments
     }
 
-    /// The focus node's direct children as panel rows, sized by `allocatedSize`.
+    /// The focus node's direct children as panel rows, sized by `allocatedSize`. The
+    /// sub-threshold tail is folded into one trailing "Other" row, mirroring the chart's grouping.
     static func rows(focus: FileNode) -> [ContentsPanelRow] {
         guard let children = focus.children else { return [] }
         let focusIsDev = DevClassifier.isWithinDevItem(focus)
-        return sortedEntries(of: children, parentIsDev: focusIsDev)
-            .map { ContentsPanelRow(node: $0.node, displaySize: $0.size, isDev: $0.isDev) }
+        let entries = sortedEntries(of: children, parentIsDev: focusIsDev)
+        let (head, tail) = splitTail(entries, focusTotal: focus.allocatedSize)
+        var rows = head.map {
+            ContentsPanelRow(node: $0.node, displaySize: $0.size, isDev: $0.isDev,
+                             name: $0.node.displayName, otherCount: 0)
+        }
+        if !tail.isEmpty {
+            let size = tail.reduce(Int64(0)) { $0 + $1.size }
+            rows.append(ContentsPanelRow(node: nil, displaySize: size, isDev: false,
+                                         name: "Other", otherCount: tail.count))
+        }
+        return rows
     }
 
     /// The focus's `allocatedSize`. Drives the panel share bars, the center label, and the
@@ -114,7 +164,8 @@ enum SunburstLayout {
 
     private static func recurse(
         _ node: FileNode, depth: Int, start: Double, end: Double,
-        hue: Double, nodeIsDev: Bool, highlight: Bool, into segments: inout [SunburstSegment]
+        hue: Double, nodeIsDev: Bool, focusTotal: Int64, highlight: Bool,
+        into segments: inout [SunburstSegment]
     ) {
         guard depth <= maxDepth, let children = node.children else { return }
         let parentTotal = node.allocatedSize
@@ -122,8 +173,9 @@ enum SunburstLayout {
 
         let span = end - start
         let entries = sortedEntries(of: children, parentIsDev: nodeIsDev)
+        let (head, tail) = splitTail(entries, focusTotal: focusTotal)
         var cursor = start
-        for entry in entries {
+        for entry in head {
             let extent = span * Double(entry.size) / Double(parentTotal)
             let childStart = cursor
             cursor += extent
@@ -132,7 +184,12 @@ enum SunburstLayout {
                    isDev: entry.isDev, fraction: entry.fraction, highlight: highlight,
                    into: &segments)
             recurse(entry.node, depth: depth + 1, start: childStart, end: cursor,
-                    hue: hue, nodeIsDev: entry.isDev, highlight: highlight, into: &segments)
+                    hue: hue, nodeIsDev: entry.isDev, focusTotal: focusTotal, highlight: highlight,
+                    into: &segments)
+        }
+        if !tail.isEmpty {
+            appendOther(tail, depth: depth, start: cursor, end: end,
+                        highlight: highlight, into: &segments)
         }
     }
 
@@ -145,8 +202,10 @@ enum SunburstLayout {
         let brightness = min(0.97, 0.70 + Double(depth - 1) * 0.06)
         segments.append(
             SunburstSegment(
-                id: ObjectIdentifier(node),
+                id: segments.count,
                 node: node,
+                label: node.displayName,
+                size: node.allocatedSize,
                 depth: depth,
                 startAngle: start,
                 endAngle: end,
@@ -161,15 +220,73 @@ enum SunburstLayout {
         )
     }
 
-    /// Children mapped to (node, allocatedSize, isDev, reclaimableFraction), sorted by size
-    /// descending. `parentIsDev` is the "inside a dev item" flag of the parent, threaded down so
-    /// no per-node `isWithinDevItem` walk is needed. `fraction` is 1 for a dev node (item or
+    /// Appends one neutral-gray "Other" wedge spanning `[start, end]` for a directory's grouped
+    /// sub-threshold tail. It is never recursed into. Gray = hue 0 + saturation 0 with the same
+    /// per-depth brightness ramp as `append`, so it reads as "misc, grouped" rather than a branch
+    /// color; the honest combined reclaimable share is still recorded in `reclaimableFraction`.
+    private static func appendOther(
+        _ tail: ArraySlice<Entry>, depth: Int, start: Double, end: Double,
+        highlight: Bool, into segments: inout [SunburstSegment]
+    ) {
+        let size = tail.reduce(Int64(0)) { $0 + $1.size }
+        // `fraction * size` is each entry's reclaimable bytes (devSize for a container, the full
+        // size for a dev item), so the sum over size is the tail's combined reclaimable share.
+        let devBytes = tail.reduce(0.0) { $0 + $1.fraction * Double($1.size) }
+        let fraction = size > 0 ? devBytes / Double(size) : 0
+        let brightness = min(0.97, 0.70 + Double(depth - 1) * 0.06)
+        segments.append(
+            SunburstSegment(
+                id: segments.count,
+                node: nil,
+                label: "Other",
+                size: size,
+                depth: depth,
+                startAngle: start,
+                endAngle: end,
+                hue: 0,
+                saturation: 0,
+                brightness: brightness,
+                isUnreadable: false,
+                isDev: false,
+                reclaimableFraction: highlight ? fraction : 1
+            )
+        )
+    }
+
+    /// A sized, classified child of some directory. `fraction` is 1 for a dev node (item or
     /// descendant), otherwise its `devSize / allocatedSize` share (0 when empty).
+    private typealias Entry = (node: FileNode, size: Int64, isDev: Bool, fraction: Double)
+
+    /// Fraction of the focus total below which an entry is "tiny": 0.1%. Sunburst angles nest
+    /// proportionally, so any node's angular fraction of the full circle equals `size / focusTotal`
+    /// — the same base the angles use. A tiny entry is therefore always a sub-0.36° sliver that
+    /// the `minAngle` cull would drop, leaving a silent gap.
+    static let tailFraction = 0.001
+
+    /// Splits size-sorted `entries` into the drawn head and the grouped tail. The tail is the
+    /// contiguous suffix of entries each below `tailFraction` of `focusTotal`, and is returned only
+    /// when it holds ≥ 2 entries — a lone tiny entry stays in the head and is drawn (and possibly
+    /// minAngle-culled) as-is. Grouping the tail into one "Other" wedge closes the ring gap that
+    /// mass-culling slivers would otherwise leave.
+    private static func splitTail(
+        _ entries: [Entry], focusTotal: Int64
+    ) -> (head: ArraySlice<Entry>, tail: ArraySlice<Entry>) {
+        let threshold = tailFraction * Double(focusTotal)
+        var split = entries.count
+        while split > 0, Double(entries[split - 1].size) < threshold {
+            split -= 1
+        }
+        guard entries.count - split >= 2 else { return (entries[...], entries[entries.count...]) }
+        return (entries[..<split], entries[split...])
+    }
+
+    /// Children mapped to `Entry`, sorted by size descending. `parentIsDev` is the "inside a dev
+    /// item" flag of the parent, threaded down so no per-node `isWithinDevItem` walk is needed.
     private static func sortedEntries(
         of children: [FileNode], parentIsDev: Bool
-    ) -> [(node: FileNode, size: Int64, isDev: Bool, fraction: Double)] {
+    ) -> [Entry] {
         children
-            .map { child -> (node: FileNode, size: Int64, isDev: Bool, fraction: Double) in
+            .map { child -> Entry in
                 let isDev = parentIsDev || child.devCategory != nil
                 let fraction: Double
                 if isDev {

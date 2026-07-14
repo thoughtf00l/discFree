@@ -78,20 +78,30 @@ struct SunburstView: View {
     let onDrill: (FileNode) -> Void
     let onAscend: () -> Void
 
-    /// Shared with the contents panel so hovering in either place highlights both.
+    /// Shared with the contents panel so hovering in either place highlights both. Carries only
+    /// real nodes; the synthetic "Other" wedge has none, so its hover is tracked in `hoveredOther`.
     @Binding var hovered: FileNode?
+
+    /// The synthetic "Other" wedge currently hovered, if any. Local to the chart: hovering "Other"
+    /// clears the shared `hovered` binding and drives the center readout from here instead.
+    @State private var hoveredOther: HoveredOther?
+
+    private struct HoveredOther: Equatable {
+        let id: Int
+        let label: String
+        let size: Int64
+    }
 
     var body: some View {
         GeometryReader { proxy in
             let geometry = SunburstGeometry(size: proxy.size, ringCount: SunburstLayout.maxDepth)
-            let hoveredID = hovered.map(ObjectIdentifier.init)
 
             ZStack {
                 Canvas { context, size in
                     let g = SunburstGeometry(size: size, ringCount: SunburstLayout.maxDepth)
                     for segment in segments {
                         let path = g.path(for: segment)
-                        let fill = segment.id == hoveredID ? segment.highlightedColor : segment.color
+                        let fill = isHovered(segment) ? segment.highlightedColor : segment.color
                         context.fill(path, with: .color(fill))
                         context.stroke(path, with: .color(.black.opacity(0.10)), lineWidth: 0.5)
                     }
@@ -104,23 +114,27 @@ struct SunburstView: View {
         }
     }
 
+    /// Whether `segment` is the one under the cursor: real segments match the shared `hovered` node
+    /// by identity; the synthetic "Other" wedge matches the locally tracked `hoveredOther` by id.
+    private func isHovered(_ segment: SunburstSegment) -> Bool {
+        if let node = segment.node { return node === hovered }
+        return segment.id == hoveredOther?.id
+    }
+
     @ViewBuilder
     private func centerLabel(_ geometry: SunburstGeometry) -> some View {
-        let shown = hovered ?? focus
-        // The focus total is precomputed; a hovered node's size is read on demand (only while
-        // hovering a single node).
-        let shownSize = shown === focus ? focusTotal : shown.allocatedSize
+        let readout = centerReadout()
         VStack(spacing: 3) {
-            Text(shown.displayName)
+            Text(readout.name)
                 .font(.headline)
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
                 .minimumScaleFactor(0.6)
-            Text(byteString(shownSize))
+            Text(byteString(readout.size))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
-            if hovered == nil, focus.parent != nil {
+            if hovered == nil, hoveredOther == nil, focus.parent != nil {
                 Text("Click center to go up")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
@@ -131,14 +145,25 @@ struct SunburstView: View {
         .position(geometry.center)
     }
 
+    /// The name and size the center label shows: the hovered "Other" wedge, else the hovered node,
+    /// else the focus. The focus total is precomputed; a hovered node's size is read on demand.
+    private func centerReadout() -> (name: String, size: Int64) {
+        if let hoveredOther {
+            return (hoveredOther.label, hoveredOther.size)
+        }
+        let shown = hovered ?? focus
+        return (shown.displayName, shown === focus ? focusTotal : shown.allocatedSize)
+    }
+
     private func handleTap(_ location: CGPoint, _ geometry: SunburstGeometry) {
         guard let hit = geometry.hitTest(location) else { return }
         if hit.depth == 0 {
             onAscend()
             return
         }
-        if let segment = segment(at: hit) {
-            onDrill(segment.node)
+        // The synthetic "Other" wedge (node nil) is not drillable — a tap on it does nothing.
+        if let segment = segment(at: hit), let node = segment.node {
+            onDrill(node)
         }
     }
 
@@ -147,12 +172,20 @@ struct SunburstView: View {
         case .active(let location):
             if let hit = geometry.hitTest(location), hit.depth > 0,
                let segment = segment(at: hit) {
-                hovered = segment.node
+                if let node = segment.node {
+                    hovered = node
+                    hoveredOther = nil
+                } else {
+                    hovered = nil
+                    hoveredOther = HoveredOther(id: segment.id, label: segment.label, size: segment.size)
+                }
             } else {
                 hovered = nil
+                hoveredOther = nil
             }
         case .ended:
             hovered = nil
+            hoveredOther = nil
         }
     }
 

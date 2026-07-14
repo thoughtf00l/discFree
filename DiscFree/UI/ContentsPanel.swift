@@ -16,37 +16,52 @@ struct ContentsPanel: View {
     var body: some View {
         List {
             ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
-                ContentsRow(
+                let content = ContentsRow(
                     row: row,
                     focusTotal: focusTotal,
                     hue: rows.count > 0 ? Double(index) / Double(rows.count) : 0,
-                    isHovered: hovered === row.node
+                    isHovered: isRowHovered(row)
                 )
                 .contentShape(Rectangle())
-                .onTapGesture { onDrill(row.node) }
+                .onTapGesture { if let node = row.node { onDrill(node) } }
                 .onHover { isInside in
-                    if isInside { hovered = row.node }
-                    else if hovered === row.node { hovered = nil }
+                    guard let node = row.node else { return }
+                    if isInside { hovered = node }
+                    else if hovered === node { hovered = nil }
                 }
-                .contextMenu {
-                    Button {
-                        onReveal(row.node)
-                    } label: {
-                        Label("Reveal in Finder", systemImage: "magnifyingglass")
-                    }
-                    // Never offer Trash while a scan is still running: sizes are lower bounds
-                    // and the tree is still mutating.
-                    if !scanActive {
-                        Button(role: .destructive) {
-                            onTrash(row.node)
+
+                // The synthetic "Other" row groups the sub-threshold tail: it is not a real path,
+                // so it offers neither drill nor the Reveal / Move-to-Trash context menu.
+                if row.isOther {
+                    content
+                } else {
+                    content.contextMenu {
+                        Button {
+                            if let node = row.node { onReveal(node) }
                         } label: {
-                            Label("Move to Trash…", systemImage: "trash")
+                            Label("Reveal in Finder", systemImage: "magnifyingglass")
+                        }
+                        // Never offer Trash while a scan is still running: sizes are lower bounds
+                        // and the tree is still mutating.
+                        if !scanActive {
+                            Button(role: .destructive) {
+                                if let node = row.node { onTrash(node) }
+                            } label: {
+                                Label("Move to Trash…", systemImage: "trash")
+                            }
                         }
                     }
                 }
             }
         }
         .listStyle(.inset)
+    }
+
+    /// Row hover highlight, matched by node identity. The synthetic "Other" row has no node, so it
+    /// never highlights (and, crucially, never matches a `nil` `hovered` by accident).
+    private func isRowHovered(_ row: ContentsPanelRow) -> Bool {
+        guard let node = row.node else { return false }
+        return hovered === node
     }
 }
 
@@ -56,26 +71,31 @@ private struct ContentsRow: View {
     let hue: Double
     let isHovered: Bool
 
-    private var node: FileNode { row.node }
-
     private var share: Double {
         focusTotal > 0 ? Double(row.displaySize) / Double(focusTotal) : 0
     }
 
     private var swatch: Color {
-        if node.isUnreadable { return Color(white: 0.55) }
+        if row.isOther { return Color(white: 0.6) }  // neutral gray, matching the "Other" wedge
+        if row.node?.isUnreadable == true { return Color(white: 0.55) }
         return Color(hue: hue, saturation: 0.7, brightness: 0.82)
     }
 
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: iconName)
-                .foregroundStyle(node.isUnreadable ? Color.secondary : swatch)
+                .foregroundStyle(row.node?.isUnreadable == true ? Color.secondary : swatch)
                 .frame(width: 18)
 
-            Text(node.displayName)
+            Text(row.name)
                 .lineLimit(1)
                 .truncationMode(.middle)
+
+            if row.isOther {
+                Text("\(row.otherCount) items")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
 
             Spacer(minLength: 8)
 
@@ -109,19 +129,23 @@ private struct ContentsRow: View {
         }
     }
 
-    /// The deletion-risk badge, shown only on a dev-item root (not on containers or descendants).
+    /// The deletion-risk badge, shown only on a dev-item root (not on containers, descendants, or
+    /// the synthetic "Other" row).
     @ViewBuilder
     private var riskBadge: some View {
-        if let category = node.devCategory {
+        if let category = row.node?.devCategory {
             RiskBadge(category: category)
         }
     }
 
     private var isDrillable: Bool {
-        node.isDirectory && node.children != nil && node.allocatedSize > 0
+        guard let node = row.node else { return false }
+        return node.isDirectory && node.children != nil && node.allocatedSize > 0
     }
 
     private var iconName: String {
+        if row.isOther { return "ellipsis.circle" }
+        guard let node = row.node else { return "doc.fill" }
         if node.isUnreadable { return "lock.fill" }
         return node.isDirectory ? "folder.fill" : "doc.fill"
     }

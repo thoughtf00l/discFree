@@ -59,7 +59,7 @@ final class SunburstLayoutTests: XCTestCase {
         let f = classifiedFixture()
         let rows = SunburstLayout.rows(focus: f.focus)
 
-        XCTAssertEqual(rows.map { ObjectIdentifier($0.node) },
+        XCTAssertEqual(rows.map { ObjectIdentifier($0.node!) },
                        [f.nodeModules, f.notes, f.proj].map(ObjectIdentifier.init))
         XCTAssertEqual(rows.map(\.displaySize), [1000, 500, 400])
         // A container that merely holds dev items is not itself dev (drives trash consequence text).
@@ -173,5 +173,92 @@ final class SunburstLayoutTests: XCTestCase {
         let plainSeg = try! XCTUnwrap(segment(for: plain, in: segments))
         XCTAssertFalse(plainSeg.isDev)
         XCTAssertEqual(plainSeg.reclaimableFraction, 0, accuracy: 1e-9)
+    }
+
+    // MARK: - Tail grouping ("Other")
+
+    /// A directory with two large children and a long tail of sub-0.1% ones renders the two large
+    /// wedges plus one synthetic "Other" wedge that spans the tail's combined angle and closes the
+    /// ring. The panel mirrors this: two rows plus a trailing "Other — N items" row.
+    func testTailGroupsIntoOneOtherWedgeAndClosesRing() {
+        let big1 = file("big1", 120_000)
+        let big2 = file("big2", 100_000)
+        let tiny = (0..<50).map { file("tiny\($0)", 1) }           // each 1 B, well under 0.1%
+        let focus = dir("/work", [big1, big2] + tiny)              // total 220_050
+
+        let segments = SunburstLayout.build(focus: focus, highlight: false)
+
+        let others = segments.filter(\.isOther)
+        XCTAssertEqual(others.count, 1, "the whole tail collapses to a single wedge")
+        let other = others[0]
+        XCTAssertNil(other.node, "the Other wedge has no backing node")
+        XCTAssertEqual(other.size, 50, "its size is the sum of the 50 tail entries")
+        XCTAssertEqual(other.label, "Other")
+
+        // The two large children are drawn as their own segments (not folded into Other).
+        XCTAssertNotNil(segment(for: big1, in: segments))
+        XCTAssertNotNil(segment(for: big2, in: segments))
+        // Files have no children, so nothing recurses: two big wedges + one Other.
+        XCTAssertEqual(segments.count, 3)
+
+        // The Other wedge is last and its end closes the full circle.
+        XCTAssertEqual(other.endAngle, 2 * Double.pi, accuracy: 1e-9)
+        let maxEnd = segments.map(\.endAngle).max() ?? 0
+        XCTAssertEqual(maxEnd, 2 * Double.pi, accuracy: 1e-9)
+
+        // Panel: the two children, then one trailing "Other — 50 items" row.
+        let rows = SunburstLayout.rows(focus: focus)
+        XCTAssertEqual(rows.count, 3)
+        XCTAssertEqual(rows.prefix(2).map { ObjectIdentifier($0.node!) },
+                       [big1, big2].map(ObjectIdentifier.init))
+        XCTAssertTrue(rows.prefix(2).allSatisfy { !$0.isOther })
+        let otherRow = rows[2]
+        XCTAssertTrue(otherRow.isOther)
+        XCTAssertNil(otherRow.node, "not drillable / no Reveal / no Trash: it has no node")
+        XCTAssertEqual(otherRow.name, "Other")
+        XCTAssertEqual(otherRow.otherCount, 50)
+        XCTAssertEqual(otherRow.displaySize, 50)
+        XCTAssertFalse(otherRow.isDev)
+    }
+
+    /// A lone sub-threshold entry is left as-is, never wrapped in an "Other" of one.
+    func testSingleTinyEntryIsNotGrouped() {
+        let big1 = file("big1", 120_000)
+        let big2 = file("big2", 100_000)
+        let tiny = file("tiny", 1)
+        let focus = dir("/work", [big1, big2, tiny])
+
+        let segments = SunburstLayout.build(focus: focus, highlight: false)
+        XCTAssertTrue(segments.allSatisfy { !$0.isOther }, "no synthetic wedge for a single tiny entry")
+        XCTAssertTrue(segments.allSatisfy { $0.node != nil })
+
+        let rows = SunburstLayout.rows(focus: focus)
+        XCTAssertTrue(rows.allSatisfy { !$0.isOther }, "the tiny entry keeps its own row")
+        XCTAssertEqual(rows.count, 3)
+        XCTAssertNotNil(rows.first { $0.node === tiny })
+    }
+
+    /// The Other wedge's `reclaimableFraction` is the tail's combined `devSize / size`, so highlight
+    /// mode reports the grouped tail's reclaimable share honestly. devSize is set directly here (no
+    /// classifier pass) so the expected share is exact.
+    func testOtherWedgeReflectsTailReclaimableShare() {
+        let big1 = file("big1", 120_000)
+        let big2 = file("big2", 100_000)
+        // Four tail files of 10 B: two fully reclaimable, two clean → combined share 20 / 40 = 0.5.
+        let devA = file("devA", 10); devA.devSize = 10
+        let devB = file("devB", 10); devB.devSize = 10
+        let cleanA = file("cleanA", 10)           // devSize 0
+        let cleanB = file("cleanB", 10)           // devSize 0
+        let focus = dir("/work", [big1, big2, devA, devB, cleanA, cleanB])
+
+        let highlighted = SunburstLayout.build(focus: focus, highlight: true)
+        let other = try! XCTUnwrap(highlighted.first(where: \.isOther))
+        XCTAssertNil(other.node)
+        XCTAssertEqual(other.reclaimableFraction, 0.5, accuracy: 1e-9)
+
+        // Highlighting off forces the fraction to 1, like every other segment.
+        let plain = SunburstLayout.build(focus: focus, highlight: false)
+        let plainOther = try! XCTUnwrap(plain.first(where: \.isOther))
+        XCTAssertEqual(plainOther.reclaimableFraction, 1, accuracy: 1e-9)
     }
 }
