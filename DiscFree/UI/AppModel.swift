@@ -13,6 +13,12 @@ enum DisplayMode: Sendable {
     case devOnly
 }
 
+/// Which pane the result view shows: the sunburst chart, or the category-first reclaim list.
+enum ResultPane: Sendable {
+    case chart
+    case reclaim
+}
+
 /// Drives the whole app: the start → scanning → result state machine, the scan task and
 /// its cancellation, and the (off-main-thread) sunburst layout for the current focus node.
 @MainActor
@@ -60,6 +66,30 @@ final class AppModel {
     /// Last deletion error; non-nil drives the error alert.
     private(set) var errorMessage: String?
 
+    // MARK: - Reclaim pane state
+
+    /// Which pane the result view shows. A plain view preference; does not touch the tree.
+    var resultPane: ResultPane = .chart
+
+    /// Category-first reclaimable items for the current root, recomputed off the main thread at the
+    /// end of each classification pass. Empty during a scan and until the first classify completes.
+    private(set) var reclaimGroups: [ReclaimGroup] = []
+
+    /// Identities (by node) of the reclaim items the user has checked for batch trashing. Pruned to
+    /// the ids still present whenever `reclaimGroups` recomputes.
+    private(set) var reclaimSelection: Set<ObjectIdentifier> = []
+
+    /// Set by `requestReclaimTrash`; non-nil drives the reclaim confirmation dialog.
+    private(set) var pendingReclaimTrash: PendingReclaimTrash?
+
+    /// The summary a reclaim confirmation dialog presents.
+    struct PendingReclaimTrash {
+        let count: Int
+        let bytes: Int64
+        /// True when any selected item loses non-regenerable state; adds a warning line.
+        let warnsLosesState: Bool
+    }
+
     /// Whether the app can read protected locations; drives the Full Disk Access hint.
     private(set) var fullDiskAccess: FullDiskAccessStatus = .undetermined
     /// Number of unreadable directories across the whole scanned tree. Computed off the main
@@ -93,6 +123,7 @@ final class AppModel {
     private var liveScan: LiveScan?
     private var unreadableTask: Task<Void, Never>?
     private var classifyTask: Task<Void, Never>?
+    private var reclaimTask: Task<Void, Never>?
     private var refreshTask: Task<Void, Never>?
     private var snapshotSaveTask: Task<Void, Never>?
     private var didAttemptResume = false
@@ -150,6 +181,7 @@ final class AppModel {
         cancelScan()
         cancelRefresh()
         classifyTask?.cancel()
+        reclaimTask?.cancel()
         phase = .scanning
         scanActive = true
         liveScan = nil
@@ -162,6 +194,9 @@ final class AppModel {
         pendingTrash = nil
         errorMessage = nil
         unreadableCount = 0
+        reclaimGroups = []
+        reclaimSelection = []
+        pendingReclaimTrash = nil
 
         scanTask = Task { [weak self] in
             guard let self else { return }
@@ -204,6 +239,8 @@ final class AppModel {
         layoutTask = nil
         classifyTask?.cancel()
         classifyTask = nil
+        reclaimTask?.cancel()
+        reclaimTask = nil
         scanActive = false
         liveScan = nil
         lastScanDate = nil
@@ -216,6 +253,9 @@ final class AppModel {
         pendingTrash = nil
         errorMessage = nil
         unreadableCount = 0
+        reclaimGroups = []
+        reclaimSelection = []
+        pendingReclaimTrash = nil
         refreshFullDiskAccess()
     }
 
@@ -309,6 +349,9 @@ final class AppModel {
             if self.displayMode != .all, let focus = self.focus {
                 self.rebuild(for: focus)
             }
+            // Classification is the data source for the reclaim summary: every finish/adopt/trash
+            // path re-runs classify, so chaining the recompute here keeps the two in step.
+            self.recomputeReclaimGroups(from: tree)
         }
     }
 
@@ -423,6 +466,180 @@ final class AppModel {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    // MARK: - Reclaim pane
+
+    /// Rebuilds `reclaimGroups` from `tree` off the main thread (cancel-and-replace, like
+    /// `classify` and `recountUnreadable`), then prunes the selection to the items that still
+    /// exist. Chained off each classification pass, which is its data source.
+    private func recomputeReclaimGroups(from tree: FileNode) {
+        reclaimTask?.cancel()
+        reclaimTask = Task { [weak self] in
+            let groups = await Task.detached(priority: .utility) {
+                ReclaimSummary.build(from: tree)
+            }.value
+            guard !Task.isCancelled, let self else { return }
+            self.reclaimGroups = groups
+            self.pruneReclaimSelection()
+        }
+    }
+
+    /// Drops selected ids whose nodes are no longer in `reclaimGroups` (after a rescan or a trash
+    /// removed them), so the selection never references vanished items.
+    private func pruneReclaimSelection() {
+        let present = Set(reclaimGroups.flatMap { group in
+            group.items.map { ObjectIdentifier($0.node) }
+        })
+        reclaimSelection.formIntersection(present)
+    }
+
+    func toggleReclaimItem(_ item: ReclaimItem) {
+        let id = ObjectIdentifier(item.node)
+        if reclaimSelection.contains(id) {
+            reclaimSelection.remove(id)
+        } else {
+            reclaimSelection.insert(id)
+        }
+    }
+
+    /// Selects every item in `group` if any is currently unselected; otherwise deselects them all.
+    func toggleReclaimGroup(_ group: ReclaimGroup) {
+        let ids = group.items.map { ObjectIdentifier($0.node) }
+        if ids.allSatisfy({ reclaimSelection.contains($0) }) {
+            for id in ids { reclaimSelection.remove(id) }
+        } else {
+            for id in ids { reclaimSelection.insert(id) }
+        }
+    }
+
+    func clearReclaimSelection() {
+        reclaimSelection.removeAll()
+    }
+
+    func isReclaimItemSelected(_ item: ReclaimItem) -> Bool {
+        reclaimSelection.contains(ObjectIdentifier(item.node))
+    }
+
+    /// Combined size of the selected reclaim items. Cheap: group item counts are small.
+    var reclaimSelectedBytes: Int64 {
+        var total: Int64 = 0
+        for group in reclaimGroups {
+            for item in group.items where reclaimSelection.contains(ObjectIdentifier(item.node)) {
+                total += item.bytes
+            }
+        }
+        return total
+    }
+
+    var reclaimSelectedCount: Int {
+        var count = 0
+        for group in reclaimGroups {
+            for item in group.items where reclaimSelection.contains(ObjectIdentifier(item.node)) {
+                count += 1
+            }
+        }
+        return count
+    }
+
+    func requestReclaimTrash() {
+        // Same guards as the single-item flow: never act on a mutating tree, never on nothing.
+        guard !scanActive else { return }
+        let items = selectedReclaimItems()
+        guard !items.isEmpty else { return }
+        let bytes = items.reduce(0) { $0 + $1.bytes }
+        let warnsLosesState = reclaimGroups.contains { group in
+            group.category.riskTier == .losesState
+                && group.items.contains { reclaimSelection.contains(ObjectIdentifier($0.node)) }
+        }
+        pendingReclaimTrash = PendingReclaimTrash(
+            count: items.count, bytes: bytes, warnsLosesState: warnsLosesState
+        )
+    }
+
+    func cancelReclaimTrash() {
+        pendingReclaimTrash = nil
+    }
+
+    /// Moves every selected reclaim item to the Trash, then updates the tree once. The batched
+    /// counterpart of `confirmTrash`: items that vanished between scan and trash are treated as
+    /// already gone (still removed from the tree, matching the CLI's idempotent clean); other
+    /// failures leave the node in place and are surfaced via the shared `errorMessage` alert.
+    func confirmReclaimTrash() {
+        pendingReclaimTrash = nil
+        guard let root else { return }
+        let items = selectedReclaimItems()
+        guard !items.isEmpty else { return }
+
+        // SAFETY: `TreeEditor.remove(keeping:)` rejects only the focus node itself, not an ancestor
+        // of it. If the focus is a selected node or a descendant of one, detaching that node would
+        // orphan the on-screen view — move focus to the root before removing anything.
+        let selectedIds = Set(items.map { ObjectIdentifier($0.node) })
+        if let currentFocus = focus, isFocus(currentFocus, withinSelection: selectedIds) {
+            setFocus(root)
+        }
+        guard let focus else { return }
+
+        let fileManager = FileManager.default
+        var failures: [(path: String, message: String)] = []
+        for item in items {
+            var removeFromTree = false
+            if !fileManager.fileExists(atPath: item.path) {
+                removeFromTree = true  // already gone
+            } else {
+                do {
+                    try fileManager.trashItem(
+                        at: URL(fileURLWithPath: item.path), resultingItemURL: nil
+                    )
+                    removeFromTree = true
+                } catch {
+                    if !fileManager.fileExists(atPath: item.path) {
+                        removeFromTree = true  // vanished during the attempt
+                    } else {
+                        failures.append((item.path, error.localizedDescription))
+                    }
+                }
+            }
+            if removeFromTree {
+                // Ignore `nodeNotInTree`: an earlier removal in this batch may already have edited
+                // it (e.g. a selected ancestor took a selected descendant with it).
+                try? TreeEditor.remove(item.node, keeping: focus)
+            }
+        }
+
+        rebuild(for: focus)
+        recountUnreadable(in: root)
+        classify(root)  // re-classifies and recomputes reclaimGroups
+        saveSnapshot(of: root)
+        clearReclaimSelection()
+
+        if !failures.isEmpty {
+            errorMessage = reclaimFailureMessage(failures)
+        }
+    }
+
+    private func selectedReclaimItems() -> [ReclaimItem] {
+        reclaimGroups.flatMap { group in
+            group.items.filter { reclaimSelection.contains(ObjectIdentifier($0.node)) }
+        }
+    }
+
+    /// True if `focus` is one of the selected nodes or a descendant of one (walks the parent chain).
+    private func isFocus(_ focus: FileNode, withinSelection selected: Set<ObjectIdentifier>) -> Bool {
+        var node: FileNode? = focus
+        while let current = node {
+            if selected.contains(ObjectIdentifier(current)) { return true }
+            node = current.parent
+        }
+        return false
+    }
+
+    private func reclaimFailureMessage(_ failures: [(path: String, message: String)]) -> String {
+        var lines = failures.prefix(3).map { "\($0.path): \($0.message)" }
+        if failures.count > 3 {
+            lines.append("…and \(failures.count - 3) more")
+        }
+        return lines.joined(separator: "\n")
     }
 
     // MARK: - Full Disk Access

@@ -13,6 +13,14 @@ struct ResultView: View {
                 BreadcrumbBar(path: model.focusPath) { model.jump(to: $0) }
                     .frame(maxWidth: .infinity, alignment: .leading)
 
+                Picker("Pane", selection: resultPaneBinding) {
+                    Text("Chart").tag(ResultPane.chart)
+                    Text("Reclaim").tag(ResultPane.reclaim)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+
                 Picker("Display mode", selection: displayModeBinding) {
                     Text("All").tag(DisplayMode.all)
                     Text("Dev").tag(DisplayMode.devHighlight)
@@ -43,7 +51,9 @@ struct ResultView: View {
                 Divider()
             }
 
-            if let focus = model.focus {
+            if model.resultPane == .reclaim {
+                ReclaimView(model: model)
+            } else if let focus = model.focus {
                 if model.displayMode == .devOnly && model.focusDisplayTotal == 0 {
                     emptyDevState
                 } else {
@@ -134,6 +144,10 @@ struct ResultView: View {
 
     private var displayModeBinding: Binding<DisplayMode> {
         Binding(get: { model.displayMode }, set: { model.displayMode = $0 })
+    }
+
+    private var resultPaneBinding: Binding<ResultPane> {
+        Binding(get: { model.resultPane }, set: { model.resultPane = $0 })
     }
 
     /// The Move-to-Trash prompt. For a dev-item root, the category's consequence is appended

@@ -116,35 +116,11 @@ private struct ContentsRow: View {
         }
     }
 
-    /// A subdued capsule showing the deletion risk of a dev-item root (only on the root
-    /// itself, not on containers or descendants). Hovering it explains the consequence.
+    /// The deletion-risk badge, shown only on a dev-item root (not on containers or descendants).
     @ViewBuilder
     private var riskBadge: some View {
         if let category = node.devCategory {
-            let tier = category.riskTier
-            Text(riskLabel(tier))
-                .font(.caption2)
-                .foregroundStyle(riskColor(tier))
-                .padding(.horizontal, 6)
-                .padding(.vertical, 1)
-                .background(Capsule().fill(riskColor(tier).opacity(0.18)))
-                .help(category.consequence)
-        }
-    }
-
-    private func riskLabel(_ tier: DevRiskTier) -> String {
-        switch tier {
-        case .safe: return "Safe"
-        case .costsTime: return "Costs time"
-        case .losesState: return "Loses data"
-        }
-    }
-
-    private func riskColor(_ tier: DevRiskTier) -> Color {
-        switch tier {
-        case .safe: return .green
-        case .costsTime: return .yellow
-        case .losesState: return .orange
+            RiskBadge(category: category)
         }
     }
 
