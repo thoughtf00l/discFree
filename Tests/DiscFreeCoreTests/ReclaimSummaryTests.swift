@@ -24,13 +24,14 @@ final class ReclaimSummaryTests: XCTestCase {
     // MARK: - Grouping, sorting, paths, node identity
 
     func testGroupsAndItemsSortedWithCorrectPathsAndIdentity() throws {
-        // Two package-cache items (a node_modules and a __pycache__) and one xcodeBuild item,
-        // arranged so both the group order and the intra-group item order are non-trivial.
+        // Two package-cache items (two node_modules), one projectArtifacts item (a Rust target
+        // next to a Cargo.toml) and one xcodeBuild item, arranged so both the group order and the
+        // intra-group item order are non-trivial.
         let bigNodeModules = dir("node_modules", [file("dep", 5_000)])   // packageCache 5_000
         let projA = dir("projA", [bigNodeModules, file("src.js", 10)])
 
-        let pycache = dir("__pycache__", [file("mod.pyc", 800)])         // projectArtifacts 800
-        let projB = dir("projB", [pycache])
+        let target = dir("target", [file("app", 800)])                   // projectArtifacts 800
+        let projB = dir("projB", [target, file("Cargo.toml", 10)])
 
         let smallNodeModules = dir("node_modules", [file("dep", 2_000)]) // packageCache 2_000
         let projC = dir("projC", [smallNodeModules])

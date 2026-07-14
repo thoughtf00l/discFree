@@ -96,15 +96,40 @@ final class DevClassifierTests: XCTestCase {
         XCTAssertEqual(images.devSize, 12_000)
     }
 
-    func testAndroidAvdClassifiedAsSimulators() {
-        let avd = dir("avd", [file("Pixel_6.avd", 3_000)])
+    func testAndroidAvdChildrenClassifiedPerDevice() {
+        // Each `<name>.avd` directory is its own simulators item; the `avd` parent itself does not
+        // match, and the sibling `.ini` file stays unmatched (children-of matches directories only).
+        let pixel = dir("Pixel_6.avd", [file("userdata.img", 3_000)])
+        let iniFile = file("Pixel_6.ini", 50)
+        let avd = dir("avd", [pixel, iniFile])
         let android = dir(".android", [avd])
         let root = dir(home, [android])
 
         DevClassifier.classify(root, using: catalog)
 
-        XCTAssertEqual(avd.devCategory, .simulators)
-        XCTAssertEqual(avd.devSize, 3_000)
+        XCTAssertEqual(pixel.devCategory, .simulators)
+        XCTAssertEqual(pixel.devSize, 3_000)
+        XCTAssertNil(iniFile.devCategory, "a file child of avd must not match")
+        XCTAssertNil(avd.devCategory, "the avd parent itself must not match the children-of rule")
+        XCTAssertEqual(avd.devSize, 3_000, "aggregated from the device child, not the .ini file")
+    }
+
+    func testCoreSimulatorDevicesClassifiedPerDevice() {
+        // Each UUID-named device directory is its own simulators item; the Devices parent itself
+        // does not match, so the user can reclaim one simulator instead of the whole folder.
+        let deviceA = dir("11111111-2222-3333-4444-555555555555", [file("data.img", 8_000)])
+        let deviceB = dir("AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE", [file("data.img", 6_000)])
+        let devices = dir("Devices", [deviceA, deviceB])
+        let coreSim = dir("CoreSimulator", [devices])
+        let root = dir(home, [dir("Library", [dir("Developer", [coreSim])])])
+
+        DevClassifier.classify(root, using: catalog)
+
+        XCTAssertEqual(deviceA.devCategory, .simulators)
+        XCTAssertEqual(deviceB.devCategory, .simulators)
+        XCTAssertEqual(deviceA.devSize, 8_000)
+        XCTAssertNil(devices.devCategory, "the Devices parent itself must not match")
+        XCTAssertEqual(devices.devSize, 14_000, "aggregated from both device children")
     }
 
     // MARK: - " DeviceSupport" suffix rule
@@ -276,13 +301,52 @@ final class DevClassifierTests: XCTestCase {
     }
 
     func testUnguardedNameRuleMatchesAnywhere() {
-        let pycache = dir("__pycache__", [file("mod.pyc", 800)])
-        let root = dir("/work", [dir("deep", [dir("pkg", [pycache])])])
+        let terraform = dir(".terraform", [file("providers", 800)])
+        let root = dir("/work", [dir("deep", [dir("infra", [terraform])])])
 
         DevClassifier.classify(root, using: catalog)
 
-        XCTAssertEqual(pycache.devCategory, .projectArtifacts)
+        XCTAssertEqual(terraform.devCategory, .packageCache)
         XCTAssertEqual(root.devSize, 800)
+    }
+
+    // MARK: - Deliberately-removed name rules (must never match)
+
+    func testPycacheNeverMatches() {
+        // The `__pycache__` name rule was removed: bytecode caches are unactionable noise and
+        // always live inside something already captured at a useful granularity.
+        let pycache = dir("__pycache__", [file("mod.pyc", 800)])
+        let root = dir("/work", [dir("pkg", [pycache])])
+
+        DevClassifier.classify(root, using: catalog)
+
+        XCTAssertNil(pycache.devCategory, "__pycache__ must not be classified anywhere")
+        XCTAssertEqual(root.devSize, 0)
+    }
+
+    func testPodsNeverMatchesEvenNextToPodfile() {
+        // The `Pods` name rule was removed: `Pods/` is often committed to git, and that cannot be
+        // determined from the in-memory tree, so trashing it risks a wall of repo churn.
+        let pods = dir("Pods", [file("lib", 5_000)])
+        let project = dir("iosapp", [pods, file("Podfile", 100)])
+        let root = dir("/work", [project])
+
+        DevClassifier.classify(root, using: catalog)
+
+        XCTAssertNil(pods.devCategory, "Pods must not be classified even next to a Podfile")
+        XCTAssertEqual(root.devSize, 0)
+    }
+
+    func testCocoaPodsCacheExactPathStillMatches() {
+        // The `Pods` name rule is gone, but `~/Library/Caches/CocoaPods` is a real cache and stays.
+        let cocoaPods = dir("CocoaPods", [file("data", 7_000)])
+        let caches = dir("Caches", [cocoaPods])
+        let root = dir(home, [dir("Library", [caches])])
+
+        DevClassifier.classify(root, using: catalog)
+
+        XCTAssertEqual(cocoaPods.devCategory, .packageCache, "CocoaPods cache stays as an exactPath")
+        XCTAssertEqual(cocoaPods.devSize, 7_000)
     }
 
     // MARK: - Outermost match wins

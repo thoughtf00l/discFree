@@ -15,7 +15,7 @@ public enum DevCategory: String, Sendable, CaseIterable {
     case simulators
     /// Downloaded, re-fetchable package/dependency data (SwiftPM, npm, Gradle, Cargo, …).
     case packageCache
-    /// Project-local, regenerable build output (`target`, `build`, `.build`, `__pycache__`, …).
+    /// Project-local, regenerable build output (`target`, `build`, `.build`, …).
     case projectArtifacts
     /// Docker's Linux VM disk images.
     case docker
@@ -116,7 +116,7 @@ extension DevCategory {
 ///   parent (the parent itself does not match), giving per-child granularity — e.g.
 ///   each app's folder under `~/Library/Caches` becomes its own `appCaches` item.
 /// - **Name rules** match a directory of a given name anywhere in the tree, some behind a
-///   guard that avoids false positives (e.g. `Pods` only next to a `Podfile`).
+///   guard that avoids false positives (e.g. `.build` only next to a `Package.swift`).
 ///
 /// The home directory is injected so tests can point the absolute rules at a synthetic tree.
 /// All matching reads only the in-memory `FileNode` tree; it never touches the disk.
@@ -161,9 +161,7 @@ public struct DevItemCatalog {
             ("Library/Developer/Xcode/DerivedData", .xcodeBuild),
             ("Library/Developer/Xcode/Archives", .xcodeArchives),
             ("Library/Developer/Xcode/UserData/Previews", .xcodeBuild),
-            ("Library/Developer/CoreSimulator/Devices", .simulators),
             ("Library/Developer/CoreSimulator/Caches", .simulators),
-            (".android/avd", .simulators),
             ("Library/Caches/com.apple.dt.Xcode", .xcodeBuild),
             ("Library/Caches/org.swift.swiftpm", .packageCache),
             ("Library/org.swift.swiftpm", .packageCache),
@@ -199,16 +197,34 @@ public struct DevItemCatalog {
         // Yarn, …), which win over this blanket rule in `category(for:)`.
         self.childrenOfParents = [
             "\(home)/Library/Caches": .appCaches,
+            // Per-device granularity: each simulator/emulator device directory is its own item so
+            // the user can reclaim a single device, not the whole multi-ten-GB `Devices`/`avd`
+            // folder at once (the parent folder itself never matches). Device directories have
+            // opaque names — a UUID for CoreSimulator, `<name>.avd` for Android — and any
+            // friendly labelling happens in the app layer; the catalog never reads the disk.
+            // For `avd`, the sibling `<name>.ini` files stay unmatched (children-of matches
+            // directories only).
+            "\(home)/Library/Developer/CoreSimulator/Devices": .simulators,
+            "\(home)/.android/avd": .simulators,
         ]
 
         self.deviceSupportParent = "\(home)/Library/Developer/Xcode"
 
+        // Directory-name rules, matched anywhere in the tree. Two names are DELIBERATELY ABSENT;
+        // do not re-add them:
+        // - `Pods`: CocoaPods `Pods/` is frequently committed to git. Whether a given one is
+        //   committed cannot be told from the in-memory tree (that needs .gitignore reading and
+        //   gitignore semantics — disk access), and trashing a committed `Pods` floods the repo
+        //   with churn the user never asked for. The real cache, `~/Library/Caches/CocoaPods`,
+        //   is still captured as an exactPath above.
+        // - `__pycache__`: bytecode caches are tiny and legion (tens of thousands under a single
+        //   `~/.cache/uv`), unactionable noise that drowns the list — and they always live inside
+        //   something already captured at a useful granularity (a venv, a managed runtime's
+        //   site-packages, or a project), so nothing reclaimable is lost by omitting them.
         self.nameRules = [
             "node_modules": NameRule(category: .packageCache, guardKind: .none),
-            "__pycache__": NameRule(category: .projectArtifacts, guardKind: .none),
             ".terraform": NameRule(category: .packageCache, guardKind: .none),
             "DerivedData": NameRule(category: .xcodeBuild, guardKind: .none),
-            "Pods": NameRule(category: .packageCache, guardKind: .sibling(["Podfile"])),
             ".build": NameRule(category: .projectArtifacts, guardKind: .sibling(["Package.swift"])),
             "Carthage": NameRule(category: .packageCache, guardKind: .sibling(["Cartfile"])),
             "target": NameRule(category: .projectArtifacts, guardKind: .sibling(["Cargo.toml"])),
