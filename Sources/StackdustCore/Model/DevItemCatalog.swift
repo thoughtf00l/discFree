@@ -26,7 +26,8 @@ public enum DevCategory: String, Sendable, CaseIterable {
     case docker
     /// Per-application caches under `~/Library/Caches`, one entry per app.
     case appCaches
-    /// Diagnostic logs written by apps and macOS (`~/Library/Logs`).
+    /// Diagnostic logs written by apps and macOS: one entry per app's folder under
+    /// `~/Library/Logs` (the root itself is not trashable, see the children-of rule).
     case logs
     /// Local iOS/iPadOS device backups (`~/Library/Application Support/MobileSync/Backup`).
     case iosBackups
@@ -155,6 +156,9 @@ public struct DevItemCatalog {
         let guardKind: NameGuard
     }
 
+    /// The normalized home directory the rules were anchored to (no trailing slash).
+    let home: String
+
     /// Absolute path (no trailing slash) → category, for the fixed home-relative locations.
     let exactPaths: [String: DevCategory]
 
@@ -180,6 +184,7 @@ public struct DevItemCatalog {
     public init(home: String = FileManager.default.homeDirectoryForCurrentUser.path) {
         // Normalise: drop a trailing slash so joins produce "<home>/<relative>", not "//".
         let home = (home.count > 1 && home.hasSuffix("/")) ? String(home.dropLast()) : home
+        self.home = home
 
         // Home-relative location → category. Turned into absolute paths below.
         let relative: [(String, DevCategory)] = [
@@ -204,7 +209,6 @@ public struct DevItemCatalog {
             (".cargo/git", .packageCache),
             ("go/pkg/mod", .packageCache),
             ("Library/Containers/com.docker.docker/Data/vms", .docker),
-            ("Library/Logs", .logs),
             ("Library/Application Support/MobileSync/Backup", .iosBackups),
             ("Library/Application Support/Adobe/Common/Media Cache Files", .adobeCache),
             ("Library/Application Support/Adobe/Common/Media Cache", .adobeCache),
@@ -221,6 +225,12 @@ public struct DevItemCatalog {
         // Yarn, …), which win over this blanket rule in `category(for:)`.
         self.childrenOfParents = [
             "\(home)/Library/Caches": .appCaches,
+            // Per-app granularity, and a hard constraint: macOS refuses to move the
+            // `~/Library/Logs` root itself to the Trash even with Full Disk Access (observed
+            // 2026-07: `trashItem` fails with a permission error), so the root must never be a
+            // reclaim item. Loose files directly in Logs stay unmatched (children-of matches
+            // directories only) — the bulk of the space is in the per-app folders.
+            "\(home)/Library/Logs": .logs,
             // Per-device granularity: each simulator/emulator device directory is its own item so
             // the user can reclaim a single device, not the whole multi-ten-GB `Devices`/`avd`
             // folder at once (the parent folder itself never matches). Device directories have
@@ -273,6 +283,32 @@ public struct DevItemCatalog {
             ".next": NameRule(category: .projectArtifacts, guardKind: .sibling(["package.json"])),
             ".nuxt": NameRule(category: .projectArtifacts, guardKind: .sibling(["package.json"])),
         ]
+    }
+
+    /// The fixed locations this catalog knows about — the roots worth probing when the caller
+    /// wants reclaimable items without walking a whole directory tree. Derived from the rules
+    /// themselves (never a second hand-kept list): every exact path, children-of parent, and the
+    /// device-support parent, with roots nested inside another root collapsed into the outer one
+    /// (e.g. `…/Xcode/DerivedData` is covered by scanning `…/Library/Developer/Xcode` once).
+    /// Name rules have no fixed location and are deliberately absent: items they match outside
+    /// these roots are only found by a full scan of a caller-provided directory.
+    public var knownRootPaths: [String] {
+        // `Library/Developer` matches no rule itself, but it is macOS's canonical container
+        // for developer tooling and the prime hunting ground for the name rules: third-party
+        // Xcode tooling (e.g. XcodeBuildMCP) keeps per-workspace `DerivedData` directories
+        // there, outside `Library/Developer/Xcode`, which only a walk can find. Probing it
+        // subsumes the Xcode and CoreSimulator roots via the nesting collapse below.
+        let candidates = Set(exactPaths.keys)
+            .union(childrenOfParents.keys)
+            .union([deviceSupportParent, "\(home)/Library/Developer"])
+        // Lexicographic order puts a parent right before its descendants, so one pass with a
+        // running "last kept root" collapses the nesting.
+        var roots: [String] = []
+        for path in candidates.sorted() {
+            if let last = roots.last, path.hasPrefix(last + "/") { continue }
+            roots.append(path)
+        }
+        return roots
     }
 
     /// Returns the category if `node` (whose absolute path is `path`) is a dev-item root, else nil.

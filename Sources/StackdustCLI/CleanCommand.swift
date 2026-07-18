@@ -3,7 +3,7 @@ import StackdustCore
 import Foundation
 
 extension Stackdust {
-    /// `stackdust clean <path>` — select reclaimable items and move them to Trash.
+    /// `stackdust clean [<path> ...]` — select reclaimable items and move them to Trash.
     ///
     /// Non-destructive by default: without `--yes` (or with `--dry-run`) it only prints the plan.
     /// It never deletes anything the classifier did not mark as a reclaimable item, and it uses
@@ -15,13 +15,18 @@ extension Stackdust {
             By default this prints a plan and exits without touching anything. Pass --yes to \
             actually move the selected items to the Trash. Items are never deleted permanently.
 
-            Example:
-              stackdust clean ~ --category packageCache,xcodeBuild --min-size 500M --yes --json
+            Without arguments, selects from the known cache and build locations only (same as \
+            `dev` without arguments). With directories, selects only from a full scan of those \
+            directories — nothing outside them is ever touched.
+
+            Examples:
+              stackdust clean --category packageCache,xcodeBuild --min-size 500M --yes --json
+              stackdust clean ~/dev --category projectArtifacts --yes
             """
         )
 
-        @Argument(help: "Directory to scan.")
-        var path: String
+        @Argument(help: "Directories to scan fully (e.g. project roots). Omit to probe only the known locations.")
+        var paths: [String] = []
 
         @Flag(name: .long, help: "Emit machine-readable JSON on stdout.")
         var json = false
@@ -48,11 +53,9 @@ extension Stackdust {
             let minBytes = try parseMinSize(minSize)
             let categories = try category.map { try Categories.parse($0) }
 
-            let tree = try await ScanRunner.run(path: path)
-            DevClassifier.classify(tree, using: DevItemCatalog())
-
+            let collected = try await DevScan.collectItems(paths: paths, catalog: DevItemCatalog())
             let planned = DevSelection.filter(
-                DevSelection.collect(tree),
+                collected,
                 categories: categories,
                 minSize: minBytes
             )

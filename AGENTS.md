@@ -13,7 +13,14 @@ interactive, never deletes permanently.
 - `Sources/StackdustCLI/` — all CLI command logic (library, unit-tested).
 - `Sources/stackdust/` — thin CLI executable entry point.
 - `Stackdust/` — the macOS app (SwiftUI); built by `Stackdust.xcodeproj`, consumes the
-  local package.
+  local package. The app embeds the CLI at `Contents/Helpers/stackdust`: the
+  "Embed CLI" build phase runs `swift build -c release` (static, self-contained —
+  Xcode's own package build links `StackdustCore` as a dynamic framework whose
+  rpath dies outside the build tree) and signs it with the app's identity. The
+  Help menu installs it as a symlink at `/usr/local/bin/stackdust` and installs
+  the bundled agent skill (`Stackdust/Resources/StackdustSkill.md` — keep it in
+  sync with this file) into `~/.claude/skills` and `~/.agents/skills`
+  (`AgentToolsInstaller.swift`).
 - `Tests/` — package tests (core + CLI). `StackdustTests/` — app/UI tests.
 - `scripts/` — release tooling (`release.sh` and its helpers).
 - `docs/` — the stackdust.app landing page and the Sparkle appcast, served by
@@ -125,13 +132,22 @@ disk space, so their size is 0 and they are intentionally not descended into. Th
 not overlap: `unreadable_count` no longer includes evicted directories. `cloud_evicted` mirrors
 `unreadable` — present on a node only when true.
 
-### `stackdust dev <path> [--json] [--min-size SIZE]`
+### `stackdust dev [<path> ...] [--json] [--min-size SIZE]`
 
 Reclaimable items (Xcode DerivedData/Archives/DeviceSupport, simulators,
 package-manager caches, `node_modules`, Rust `target` next to a `Cargo.toml`,
 Android AVDs and SDK system images, Gradle wrapper, Docker VM disks, per-app caches
-under `~/Library/Caches`, `~/Library/Logs`, local iOS device backups, Adobe media
-caches, ...), largest first. Categories: `xcodeBuild`, `xcodeArchives`,
+under `~/Library/Caches`, per-app logs under `~/Library/Logs`, local iOS device
+backups, Adobe media caches, ...), largest first.
+
+Two modes, chosen by the arguments. **Without paths** (the default), only the known
+locations are probed (`~/Library/Developer`, `~/Library/Caches`, `~/.npm`, ... —
+derived from the classifier's own rules) — seconds instead of a whole-home walk, but
+blind to project artifacts in arbitrary places. **With paths**, the given directories
+are scanned fully (this is where `node_modules`/`target`/`.venv` scattered through a
+projects tree are found); only items under those directories are reported — known
+locations outside them are NOT mixed in. Nested/duplicate paths are collapsed, so an
+item is never reported twice. Categories: `xcodeBuild`, `xcodeArchives`,
 `deviceSupport`, `simulators`, `packageCache`, `projectArtifacts`, `docker`,
 `appCaches`, `logs`, `iosBackups`, `adobeCache`. Xcode Archives are a separate
 category from `xcodeBuild`, reported as one item per `.xcarchive` build, because they
@@ -143,7 +159,9 @@ because Xcode copies those symbols off a connected device and cannot regenerate 
 without a device running that OS version. `appCaches` reports each app's
 folder under `~/Library/Caches` as its own item (folders already covered by a more
 specific category, e.g. Xcode or SwiftPM caches, keep that category instead), so a
-caller can reclaim individual apps rather than the whole caches directory. JSON:
+caller can reclaim individual apps rather than the whole caches directory. `logs`
+reports each app's folder under `~/Library/Logs` the same way — macOS refuses to
+trash the `Logs` root itself even with Full Disk Access, so it is never an item. JSON:
 `{"items": [{"path", "category", "risk", "bytes"}], "total_bytes"}`.
 
 `risk` is the category's risk tier as a snake_case token: `safe` (regenerated at no
@@ -154,7 +172,11 @@ paying network and time — `packageCache`, `projectArtifacts`, `appCaches`,
 groups items under a per-category header (`displayName — total [risk]`), largest
 category first.
 
-### `stackdust clean <path> [--json] [--category c1,c2] [--min-size SIZE] [--yes] [--dry-run]`
+### `stackdust clean [<path> ...] [--json] [--category c1,c2] [--min-size SIZE] [--yes] [--dry-run]`
+
+Selects items exactly like `dev` with the same arguments (known-locations probe
+without paths, full scan of the given directories with them — nothing outside the
+given directories is ever selected).
 
 Safety contract:
 
@@ -176,8 +198,10 @@ re-download. Items with `"loses_state"` (simulators, Docker VM disks, Xcode arch
 iOS device backups) destroy state that cannot be reproduced; propose these to the
 human and clean them only after explicit confirmation.
 
-Recommended agent flow: `dev --json` → decide → `clean --category ... --min-size ...`
-(review the plan) → same command with `--yes`.
+Recommended agent flow: `dev --json` (fast, known locations; add project directories
+as arguments when the user's projects are in scope) → decide →
+`clean --category ... --min-size ...` with the same paths (review the plan) → same
+command with `--yes`.
 
 ### Full Disk Access (macOS TCC)
 

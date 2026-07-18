@@ -3,21 +3,29 @@ import StackdustCore
 import Foundation
 
 extension Stackdust {
-    /// `stackdust dev <path>` — scan, classify, and list reclaimable item roots.
+    /// `stackdust dev [<path> ...]` — list reclaimable item roots: probe the known locations,
+    /// or fully scan the given directories.
     struct Dev: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
             abstract: "List reclaimable items (build/package caches, app caches, logs, iOS backups, Adobe media caches, ...).",
             discussion: """
+            Without arguments, probes only the known cache and build locations (Xcode, \
+            simulators, package-manager caches, per-app caches, ...) — fast, but blind to \
+            project artifacts in arbitrary places. Pass one or more directories (e.g. where \
+            your projects live) to scan them fully instead; only items under those \
+            directories are reported.
+
             Reports only the roots of reclaimable items (e.g. a whole node_modules or app cache \
             folder), never the files inside them, sorted largest-first.
 
-            Example:
-              stackdust dev ~ --min-size 100M --json
+            Examples:
+              stackdust dev --json                 # known locations only (fast)
+              stackdust dev ~/dev --min-size 100M  # full scan of a projects directory
             """
         )
 
-        @Argument(help: "Directory to scan.")
-        var path: String
+        @Argument(help: "Directories to scan fully (e.g. project roots). Omit to probe only the known locations.")
+        var paths: [String] = []
 
         @Flag(name: .long, help: "Emit machine-readable JSON on stdout.")
         var json = false
@@ -34,11 +42,9 @@ extension Stackdust {
         private func execute() async throws {
             let minBytes = try parseMinSize(minSize)
 
-            let tree = try await ScanRunner.run(path: path)
-            DevClassifier.classify(tree, using: DevItemCatalog())
-
+            let collected = try await DevScan.collectItems(paths: paths, catalog: DevItemCatalog())
             let items = DevSelection.filter(
-                DevSelection.collect(tree),
+                collected,
                 categories: nil,
                 minSize: minBytes
             )

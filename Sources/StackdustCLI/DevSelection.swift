@@ -44,7 +44,9 @@ enum DevSelection {
         }
     }
 
-    private static func sorted(_ items: [Item]) -> [Item] {
+    /// Largest-first with the path as a stable tiebreaker — the order every item list the CLI
+    /// emits uses, including lists merged from several scanned roots.
+    static func sorted(_ items: [Item]) -> [Item] {
         items.sorted { lhs, rhs in
             lhs.bytes != rhs.bytes ? lhs.bytes > rhs.bytes : lhs.path < rhs.path
         }

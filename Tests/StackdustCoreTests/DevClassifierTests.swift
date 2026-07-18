@@ -254,14 +254,20 @@ final class DevClassifierTests: XCTestCase {
 
     // MARK: - New exactPath rules (logs, iOS backups, Adobe media caches)
 
-    func testLibraryLogsClassifiedAsLogs() {
-        let logs = dir("Logs", [file("DiagnosticReports", 1_500)])
+    func testLibraryLogsChildrenClassifiedAsLogsButNotTheRoot() {
+        // Per-app children match; the Logs root itself must never be a reclaim item — macOS
+        // refuses to trash it even with Full Disk Access. Loose files stay unmatched.
+        let appLogs = dir("JetBrains", [file("idea.log", 1_500)])
+        let looseFile = file("autodesk.streamer.log", 300)
+        let logs = dir("Logs", [appLogs, looseFile])
         let root = dir(home, [dir("Library", [logs])])
 
         DevClassifier.classify(root, using: catalog)
 
-        XCTAssertEqual(logs.devCategory, .logs)
-        XCTAssertEqual(logs.devSize, 1_500)
+        XCTAssertNil(logs.devCategory, "the Logs root itself is not trashable")
+        XCTAssertEqual(appLogs.devCategory, .logs)
+        XCTAssertEqual(appLogs.devSize, 1_500)
+        XCTAssertEqual(logs.devSize, 1_500, "only the per-app folder aggregates, not loose files")
     }
 
     func testMobileSyncBackupClassifiedAsIosBackups() {

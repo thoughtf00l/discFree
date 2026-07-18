@@ -11,7 +11,27 @@ enum ScanRunner {
     ///   (after scanning — the Full Disk Access case, detected via `isUnreadable`).
     static func run(path: String) async throws -> FileNode {
         let url = try RootProbe.validate(path)
+        let tree = try await scanTree(at: url)
 
+        // The root existed and was a directory at probe time, but the scanner could not open
+        // it — on macOS this is almost always missing Full Disk Access for the terminal app.
+        if tree.isUnreadable {
+            throw CLIError(
+                code: "permission_denied",
+                message: "The scan root could not be read.",
+                path: tree.name,
+                hint: fullDiskAccessHint,
+                exit: .permissionDenied
+            )
+        }
+
+        return tree
+    }
+
+    /// Scans `url` and returns the aggregated tree without judging its readability: the root may
+    /// come back with `isUnreadable` set, and the caller decides whether that is fatal (`run`
+    /// throws; the known-locations probe records it and moves on).
+    static func scanTree(at url: URL) async throws -> FileNode {
         let scanner = DiskScanner()
         let progress = ProgressReporter()
         var tree: FileNode?
@@ -40,18 +60,6 @@ enum ScanRunner {
                 code: "scan_failed",
                 message: "The scan produced no result.",
                 path: url.path,
-                exit: .permissionDenied
-            )
-        }
-
-        // The root existed and was a directory at probe time, but the scanner could not open
-        // it — on macOS this is almost always missing Full Disk Access for the terminal app.
-        if tree.isUnreadable {
-            throw CLIError(
-                code: "permission_denied",
-                message: "The scan root could not be read.",
-                path: tree.name,
-                hint: fullDiskAccessHint,
                 exit: .permissionDenied
             )
         }
