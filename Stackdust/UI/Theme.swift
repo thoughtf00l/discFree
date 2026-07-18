@@ -47,6 +47,10 @@ struct ThemeColor: Codable, Equatable, Sendable {
 
     var color: Color { Color(.sRGB, red: red, green: green, blue: blue) }
 
+    /// Approximate relative luminance (on gamma-encoded components — good enough to pick
+    /// a light or dark control scheme over this color).
+    var luminance: Double { 0.2126 * red + 0.7152 * green + 0.0722 * blue }
+
     /// HSB components for the sunburst's per-depth saturation/brightness ramps. Pure math —
     /// callable from the detached layout pass.
     var hsb: (hue: Double, saturation: Double, brightness: Double) {
@@ -73,6 +77,29 @@ struct Theme: Codable, Equatable, Identifiable, Sendable {
     var name: String
     var colors: [ThemeColor]
     var accent: ThemeColor
+    /// Main-window background; nil follows the system appearance. A custom color also forces
+    /// the window's control scheme (light/dark) by its luminance so labels stay readable.
+    var background: ThemeColor?
+
+    init(id: String, name: String, colors: [ThemeColor], accent: ThemeColor,
+         background: ThemeColor? = nil) {
+        self.id = id
+        self.name = name
+        self.colors = colors
+        self.accent = accent
+        self.background = background
+    }
+
+    /// The control scheme a custom background needs; nil when following the system.
+    var colorScheme: ColorScheme? {
+        background.map { $0.luminance < 0.5 ? .dark : .light }
+    }
+}
+
+extension EnvironmentValues {
+    /// Non-nil when the active theme paints a custom window background. Views with opaque
+    /// system backgrounds (the contents List) hide them so the color shows through.
+    @Entry var themeBackground: ThemeColor?
 }
 
 /// Selection, edits, and custom themes, persisted in `UserDefaults`. Built-in themes are
@@ -81,10 +108,11 @@ struct Theme: Codable, Equatable, Identifiable, Sendable {
 @Observable
 final class ThemeStore {
 
-    /// Colors and accent of an edited built-in theme (its id and name stay fixed).
+    /// Colors, accent, and background of an edited built-in theme (its id and name stay fixed).
     private struct Override: Codable {
         var colors: [ThemeColor]
         var accent: ThemeColor
+        var background: ThemeColor?
     }
 
     nonisolated static let builtIns: [Theme] = [
@@ -162,6 +190,7 @@ final class ThemeStore {
         var resolved = theme
         resolved.colors = override.colors
         resolved.accent = override.accent
+        resolved.background = override.background
         return resolved
     }
 
@@ -197,6 +226,11 @@ final class ThemeStore {
 
     func setAccent(_ color: ThemeColor, for id: String) {
         mutate(id) { $0.accent = color }
+    }
+
+    /// nil returns the theme to the system window background.
+    func setBackground(_ color: ThemeColor?, for id: String) {
+        mutate(id) { $0.background = color }
     }
 
     /// Renames a custom theme; built-in names are fixed.
@@ -239,7 +273,8 @@ final class ThemeStore {
         if let builtIn = Self.builtIns.first(where: { $0.id == id }) {
             var theme = resolveBuiltIn(builtIn)
             edit(&theme)
-            overrides[id] = Override(colors: theme.colors, accent: theme.accent)
+            overrides[id] = Override(colors: theme.colors, accent: theme.accent,
+                                     background: theme.background)
         } else if let index = customThemes.firstIndex(where: { $0.id == id }) {
             edit(&customThemes[index])
         } else {

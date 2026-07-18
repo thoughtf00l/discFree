@@ -110,6 +110,20 @@ private struct ThemeDetail: View {
 
                     ColorPicker("Accent", selection: accentBinding, supportsOpacity: false)
                         .help("Buttons, toggles, and selection highlights")
+
+                    HStack {
+                        Picker("Background", selection: backgroundIsCustomBinding) {
+                            Text("System").tag(false)
+                            Text("Custom").tag(true)
+                        }
+                        .pickerStyle(.segmented)
+                        .fixedSize()
+                        if theme.background != nil {
+                            ColorPicker("", selection: backgroundBinding, supportsOpacity: false)
+                                .labelsHidden()
+                        }
+                    }
+                    .help("Window background; Custom also switches controls to match its darkness")
                 }
                 .padding(.trailing, 8)
             }
@@ -185,6 +199,25 @@ private struct ThemeDetail: View {
         Binding(
             get: { theme.accent.color },
             set: { store.setAccent(ThemeColor($0), for: theme.id) }
+        )
+    }
+
+    /// The dark surface from the landing page — the starting point when switching to Custom.
+    private static let defaultCustomBackground = ThemeColor(hex: 0x191228)
+
+    private var backgroundIsCustomBinding: Binding<Bool> {
+        Binding(
+            get: { theme.background != nil },
+            set: { custom in
+                store.setBackground(custom ? Self.defaultCustomBackground : nil, for: theme.id)
+            }
+        )
+    }
+
+    private var backgroundBinding: Binding<Color> {
+        Binding(
+            get: { (theme.background ?? Self.defaultCustomBackground).color },
+            set: { store.setBackground(ThemeColor($0), for: theme.id) }
         )
     }
 

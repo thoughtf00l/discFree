@@ -16,6 +16,10 @@ struct ContentsPanel: View {
     let onReveal: (FileNode) -> Void
     let onTrash: (FileNode) -> Void
 
+    /// Non-nil when the theme paints a custom window background; the List then hides its own
+    /// opaque background so the color shows through.
+    @Environment(\.themeBackground) private var themeBackground
+
     var body: some View {
         List {
             ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
@@ -59,6 +63,7 @@ struct ContentsPanel: View {
             }
         }
         .listStyle(.inset)
+        .scrollContentBackground(themeBackground == nil ? .automatic : .hidden)
     }
 
     /// Row hover highlight, matched by node identity. The synthetic "Other" row has no node, so it

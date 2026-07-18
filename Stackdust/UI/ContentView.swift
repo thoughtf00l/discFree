@@ -19,10 +19,23 @@ struct ContentView: View {
         }
         .frame(minWidth: 720, minHeight: 560)
         .tint(themeStore.selected.accent.color)
+        // Custom background paints the whole window (title bar included) and forces the
+        // control scheme by its luminance so labels stay readable; nil follows the system.
+        .containerBackground(backgroundStyle, for: .window)
+        .preferredColorScheme(themeStore.selected.colorScheme)
+        .environment(\.themeBackground, themeStore.selected.background)
         .onChange(of: themeStore.selected, initial: true) { _, theme in
             model.themePalette = theme.colors
         }
         .task { model.attemptResume() }
+    }
+
+    private var backgroundStyle: AnyShapeStyle {
+        if let background = themeStore.selected.background {
+            AnyShapeStyle(background.color)
+        } else {
+            AnyShapeStyle(.windowBackground)
+        }
     }
 }
 
