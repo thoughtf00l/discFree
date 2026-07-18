@@ -29,10 +29,11 @@ struct ResultView: View {
                 .themedProminentButton(glass: themeStore.selected.isGlass)
                 .fixedSize()
             }
-            // The window has no title bar; the leading inset clears the floating traffic lights.
-            .padding(.leading, 78)
-            .padding(.trailing, 12)
-            .padding(.vertical, 8)
+            // The window has no title bar; the top inset drops the bar below the floating
+            // traffic lights so the breadcrumb keeps its place at the left edge.
+            .padding(.horizontal, 12)
+            .padding(.top, 32)
+            .padding(.bottom, 8)
 
             Divider()
 
