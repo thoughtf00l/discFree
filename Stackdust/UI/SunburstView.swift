@@ -99,11 +99,21 @@ struct SunburstView: View {
             ZStack {
                 Canvas { context, size in
                     let g = SunburstGeometry(size: size, ringCount: SunburstLayout.maxDepth)
+                    var paths: [Path] = []
+                    paths.reserveCapacity(segments.count)
                     for segment in segments {
                         let path = g.path(for: segment)
+                        paths.append(path)
                         let fill = isHovered(segment) ? segment.highlightedColor : segment.color
                         context.fill(path, with: .color(fill))
-                        context.stroke(path, with: .color(.black.opacity(0.10)), lineWidth: 0.5)
+                    }
+                    // Separators are punched through as transparent gaps (a second pass, so a
+                    // neighbor's fill cannot repaint a gap already cut): the window background —
+                    // theme color or glass blur — shows between segments on any theme, where a
+                    // tinted hairline stroke used to vanish on dark ones.
+                    context.blendMode = .clear
+                    for path in paths {
+                        context.stroke(path, with: .color(.black), lineWidth: 1.5)
                     }
                 }
                 centerLabel(geometry)
