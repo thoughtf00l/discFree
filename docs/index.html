@@ -190,18 +190,18 @@
 <section>
   <div class="wrap">
     <h2>For CLI lovers and agents.</h2>
-    <p class="lead">Claude, Codex, or a cron job — <code>stackdust</code> treats programs as first-class users: JSON everywhere, stable exit codes, never interactive, and a dry-run-by-default cleanup that physically cannot delete permanently.</p>
+    <p class="lead">Claude, Codex, or a cron job — <code>stackdust</code> treats programs as first-class users: JSON everywhere, stable exit codes, never interactive, and a dry-run-by-default cleanup that physically cannot delete permanently. It ships inside the app: the Help menu installs it into your PATH — and installs a skill that teaches AI coding agents to use it.</p>
     <div class="term">
       <div class="term-bar"><i></i><i></i><i></i></div>
-      <pre><span class="p">❯</span> <span class="c">stackdust dev ~ --json</span>
+      <pre><span class="p">❯</span> <span class="c">stackdust dev --json</span>  <span class="m"># probes the known cache &amp; build locations in seconds; pass project dirs for a full scan</span>
 {<span class="k">"items"</span>: [
   {<span class="k">"path"</span>: <span class="m">"~/Library/Developer/Xcode/DerivedData"</span>, <span class="k">"category"</span>: <span class="m">"xcodeBuild"</span>, <span class="k">"risk"</span>: <span class="m">"safe"</span>, <span class="k">"bytes"</span>: 38214592512},
-  {<span class="k">"path"</span>: <span class="m">"~/Library/Developer/CoreSimulator/Devices"</span>, <span class="k">"category"</span>: <span class="m">"simulators"</span>, <span class="k">"risk"</span>: <span class="m">"loses_state"</span>, <span class="k">"bytes"</span>: 21474836480},
+  {<span class="k">"path"</span>: <span class="m">"~/Library/Developer/CoreSimulator/Devices/94F6C1FF-…"</span>, <span class="k">"category"</span>: <span class="m">"simulators"</span>, <span class="k">"risk"</span>: <span class="m">"loses_state"</span>, <span class="k">"bytes"</span>: 21474836480},
   <span class="m">…</span>
 ], <span class="k">"total_bytes"</span>: 96636764160}
 
-<span class="p">❯</span> <span class="c">stackdust clean ~ --category xcodeBuild,packageCache --min-size 1G --yes</span>
-<span class="m">Moved 14 items (61.3 GB) to the Trash.</span></pre>
+<span class="p">❯</span> <span class="c">stackdust clean --category xcodeBuild,packageCache --min-size 1G --yes</span>
+<span class="m">trashed 14 item(s), reclaimed 61.3 GB</span></pre>
     </div>
     <div class="risk">
       <span class="pill"><i style="background:var(--green)"></i><b>safe</b> — regenerates at build time</span>
@@ -253,7 +253,7 @@
         <h3>Homebrew <span class="pill" style="font-size:12px">recommended</span></h3>
         <pre>brew tap thoughtf00l/tap
 brew install --cask stackdust</pre>
-        <p class="fine">Installs Stackdust.app to /Applications. Updates arrive in-app, or via <code>brew upgrade --greedy</code>. The <code>stackdust</code> CLI builds from <a href="https://github.com/thoughtf00l/stackdust">source</a> with <code>swift build</code>.</p>
+        <p class="fine">Installs Stackdust.app to /Applications. Updates arrive in-app, or via <code>brew upgrade --greedy</code>. The <code>stackdust</code> CLI ships inside the app — put it on your PATH via Help → Install 'stackdust' Command Line Tool.</p>
       </div>
       <div class="card">
         <h3>Direct download</h3>
