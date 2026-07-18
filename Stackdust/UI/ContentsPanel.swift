@@ -115,6 +115,13 @@ private struct ContentsRow: View {
                                         fraction: row.reclaimableFraction)
         }
         let core = min(hsb.brightness, SunburstLayout.lightCoreMaxBrightness)
+        if themeStore.selected.isGlass {
+            // Milky translucent background — the swatch keeps the deep core color; the
+            // usual light-mode brightening would dissolve it (mirrors the frosted ramp).
+            return SunburstSegment.tint(hue: hsb.hue, saturation: hsb.saturation,
+                                        brightness: core,
+                                        fraction: row.reclaimableFraction)
+        }
         return SunburstSegment.tint(hue: hsb.hue,
                                     saturation: max(0.25, hsb.saturation - 0.10),
                                     brightness: min(1.0, core + 0.12),

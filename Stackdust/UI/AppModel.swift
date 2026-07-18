@@ -50,11 +50,17 @@ final class AppModel {
     /// picks the depth ramp — vivid-core falloff on dark, pastel wash on light.
     private(set) var themeDarkBackground: Bool = false
 
+    /// Whether the chart draws over a translucent (glass) background; in light appearance
+    /// that background is milky, so the layout uses a deeper, saturated ramp.
+    private(set) var themeFrosted: Bool = false
+
     /// Applies the active theme's chart inputs in one step, recomputing the layout at most once.
-    func setTheme(palette: [ThemeColor], darkBackground: Bool) {
-        guard palette != themePalette || darkBackground != themeDarkBackground else { return }
+    func setTheme(palette: [ThemeColor], darkBackground: Bool, frosted: Bool) {
+        guard palette != themePalette || darkBackground != themeDarkBackground
+            || frosted != themeFrosted else { return }
         themePalette = palette
         themeDarkBackground = darkBackground
+        themeFrosted = frosted
         if let focus { rebuild(for: focus) }
     }
 
@@ -348,12 +354,14 @@ final class AppModel {
         let highlight = highlightReclaimable
         let palette = themePalette
         let darkBackground = themeDarkBackground
+        let frosted = themeFrosted
         layoutTask = Task { [weak self] in
             let result = await Task.detached(priority: .userInitiated) {
                 () -> (segments: [SunburstSegment], rows: [ContentsPanelRow], total: Int64) in
                 let segments = SunburstLayout.build(focus: node, highlight: highlight,
                                                     palette: palette,
-                                                    darkBackground: darkBackground)
+                                                    darkBackground: darkBackground,
+                                                    frosted: frosted)
                 let rows = SunburstLayout.rows(focus: node, highlight: highlight)
                 let total = SunburstLayout.focusDisplayTotal(focus: node)
                 return (segments, rows, total)

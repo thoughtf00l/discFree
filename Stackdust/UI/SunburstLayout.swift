@@ -121,7 +121,7 @@ enum SunburstLayout {
 
     static func build(
         focus: FileNode, highlight: Bool, palette: [ThemeColor],
-        darkBackground: Bool = false
+        darkBackground: Bool = false, frosted: Bool = false
     ) -> [SunburstSegment] {
         var segments: [SunburstSegment] = []
         guard let children = focus.children else { return segments }
@@ -150,16 +150,16 @@ enum SunburstLayout {
             let base = palette[index % palette.count]
             append(entry.node, depth: 1, start: start, end: cursor, base: base,
                    isDev: entry.isDev, fraction: entry.fraction, highlight: highlight,
-                   darkBackground: darkBackground, into: &segments)
+                   darkBackground: darkBackground, frosted: frosted, into: &segments)
             recurse(entry.node, depth: 2, start: start, end: cursor,
                     base: base, nodeIsDev: entry.isDev, focusTotal: total, highlight: highlight,
-                    darkBackground: darkBackground, into: &segments)
+                    darkBackground: darkBackground, frosted: frosted, into: &segments)
         }
         // The grouped tail fills the ring from where the drawn head ended to the full circle,
         // closing the gap the minAngle cull would otherwise leave.
         if !tail.isEmpty {
             appendOther(tail, depth: 1, start: cursor, end: 2 * Double.pi,
-                        highlight: highlight, darkBackground: darkBackground, into: &segments)
+                        highlight: highlight, darkBackground: darkBackground, frosted: frosted, into: &segments)
         }
         return segments
     }
@@ -201,7 +201,7 @@ enum SunburstLayout {
     private static func recurse(
         _ node: FileNode, depth: Int, start: Double, end: Double,
         base: ThemeColor, nodeIsDev: Bool, focusTotal: Int64, highlight: Bool,
-        darkBackground: Bool, into segments: inout [SunburstSegment]
+        darkBackground: Bool, frosted: Bool, into segments: inout [SunburstSegment]
     ) {
         guard depth <= maxDepth, let children = node.children else { return }
         let parentTotal = node.allocatedSize
@@ -218,20 +218,20 @@ enum SunburstLayout {
             guard extent >= minAngle else { continue }
             append(entry.node, depth: depth, start: childStart, end: cursor, base: base,
                    isDev: entry.isDev, fraction: entry.fraction, highlight: highlight,
-                   darkBackground: darkBackground, into: &segments)
+                   darkBackground: darkBackground, frosted: frosted, into: &segments)
             recurse(entry.node, depth: depth + 1, start: childStart, end: cursor,
                     base: base, nodeIsDev: entry.isDev, focusTotal: focusTotal, highlight: highlight,
-                    darkBackground: darkBackground, into: &segments)
+                    darkBackground: darkBackground, frosted: frosted, into: &segments)
         }
         if !tail.isEmpty {
             appendOther(tail, depth: depth, start: cursor, end: end,
-                        highlight: highlight, darkBackground: darkBackground, into: &segments)
+                        highlight: highlight, darkBackground: darkBackground, frosted: frosted, into: &segments)
         }
     }
 
     private static func append(
         _ node: FileNode, depth: Int, start: Double, end: Double, base: ThemeColor,
-        isDev: Bool, fraction: Double, highlight: Bool, darkBackground: Bool,
+        isDev: Bool, fraction: Double, highlight: Bool, darkBackground: Bool, frosted: Bool,
         into segments: inout [SunburstSegment]
     ) {
         // On a light background outer rings get lighter, less saturated shades of the branch
@@ -246,6 +246,12 @@ enum SunburstLayout {
             let factor = Self.darkDepthFactors[min(depth - 1, Self.darkDepthFactors.count - 1)]
             saturation = max(0.35, hsb.saturation - Double(depth - 1) * 0.04)
             brightness = hsb.brightness * factor
+        } else if frosted {
+            // Milky translucent background: pastel outer rings would dissolve into it, so
+            // colors stay saturated and dim slightly outward instead of brightening.
+            let core = min(hsb.brightness, Self.lightCoreMaxBrightness)
+            saturation = max(0.35, hsb.saturation - Double(depth - 1) * 0.06)
+            brightness = core * (1 - Double(depth - 1) * 0.045)
         } else {
             let core = min(hsb.brightness, Self.lightCoreMaxBrightness)
             saturation = max(0.25, hsb.saturation - Double(depth - 1) * 0.11)
@@ -279,7 +285,8 @@ enum SunburstLayout {
     /// color; the honest combined reclaimable share is still recorded in `reclaimableFraction`.
     private static func appendOther(
         _ tail: ArraySlice<Entry>, depth: Int, start: Double, end: Double,
-        highlight: Bool, darkBackground: Bool, into segments: inout [SunburstSegment]
+        highlight: Bool, darkBackground: Bool, frosted: Bool,
+        into segments: inout [SunburstSegment]
     ) {
         let size = tail.reduce(Int64(0)) { $0 + $1.size }
         // `fraction * size` is each entry's reclaimable bytes (devSize for a container, the full

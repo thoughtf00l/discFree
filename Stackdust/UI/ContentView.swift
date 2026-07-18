@@ -35,11 +35,11 @@ struct ContentView: View {
     }
 
     /// The chart is "on a dark background" when the theme's custom color is dark, or — with the
-    /// system background — when the system is in dark mode.
+    /// system or glass background — when the system is in dark mode.
     private func pushTheme() {
         let theme = themeStore.selected
         let dark = theme.background.map { $0.luminance < 0.5 } ?? (colorScheme == .dark)
-        model.setTheme(palette: theme.colors, darkBackground: dark)
+        model.setTheme(palette: theme.colors, darkBackground: dark, frosted: theme.isGlass)
     }
 
     private var backgroundStyle: AnyShapeStyle {
