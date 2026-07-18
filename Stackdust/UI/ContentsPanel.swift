@@ -33,6 +33,7 @@ struct ContentsPanel: View {
                     base: palette.isEmpty ? ThemeColor(hue: 0, saturation: 0, brightness: 0.7)
                                           : palette[index % palette.count],
                     darkBackground: darkBackground,
+                    frosted: themeStore.selected.isGlass,
                     isHovered: isRowHovered(row)
                 )
                 .contentShape(Rectangle())
@@ -87,6 +88,8 @@ private struct ContentsRow: View {
     let focusTotal: Int64
     let base: ThemeColor
     let darkBackground: Bool
+    /// The theme draws over a translucent (glass) background.
+    let frosted: Bool
     let isHovered: Bool
 
     private var share: Double {
@@ -115,7 +118,7 @@ private struct ContentsRow: View {
                                         fraction: row.reclaimableFraction)
         }
         let core = min(hsb.brightness, SunburstLayout.lightCoreMaxBrightness)
-        if themeStore.selected.isGlass {
+        if frosted {
             // Milky translucent background — the swatch keeps the deep core color; the
             // usual light-mode brightening would dissolve it (mirrors the frosted ramp).
             return SunburstSegment.tint(hue: hsb.hue, saturation: hsb.saturation,
