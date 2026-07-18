@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		D0F100000000000000000102 /* StackdustCore in Frameworks */ = {isa = PBXBuildFile; productRef = D0F100000000000000000101 /* StackdustCore */; };
 		D0F100000000000000000104 /* StackdustCore in Frameworks */ = {isa = PBXBuildFile; productRef = D0F100000000000000000103 /* StackdustCore */; };
+		D0F100000000000000000112 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = D0F100000000000000000111 /* Sparkle */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -16,8 +17,18 @@
 		D0F1000000000000000000C3 /* StackdustTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = StackdustTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		D0F100000000000000000113 /* Exceptions for "Stackdust" folder in "Stackdust" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = D0F1000000000000000000A6 /* Stackdust */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		D0F1000000000000000000A5 /* Stackdust */ = {isa = PBXFileSystemSynchronizedRootGroup; path = Stackdust; sourceTree = "<group>"; };
+		D0F1000000000000000000A5 /* Stackdust */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (D0F100000000000000000113 /* Exceptions for "Stackdust" folder in "Stackdust" target */, ); path = Stackdust; sourceTree = "<group>"; };
 		D0F1000000000000000000C1 /* StackdustTests */ = {isa = PBXFileSystemSynchronizedRootGroup; path = StackdustTests; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
@@ -27,6 +38,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				D0F100000000000000000102 /* StackdustCore in Frameworks */,
+				D0F100000000000000000112 /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -80,6 +92,7 @@
 			name = Stackdust;
 			packageProductDependencies = (
 				D0F100000000000000000101 /* StackdustCore */,
+				D0F100000000000000000111 /* Sparkle */,
 			);
 			productName = Stackdust;
 			productReference = D0F1000000000000000000A4 /* Stackdust.app */;
@@ -140,6 +153,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				D0F100000000000000000100 /* XCLocalSwiftPackageReference "." */,
+				D0F100000000000000000110 /* XCRemoteSwiftPackageReference "Sparkle" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = D0F1000000000000000000A3 /* Products */;
@@ -335,6 +349,7 @@
 				DEVELOPMENT_TEAM = LB2P67XHCM;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Stackdust/Info.plist;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -360,6 +375,7 @@
 				DEVELOPMENT_TEAM = LB2P67XHCM;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Stackdust/Info.plist;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -448,6 +464,17 @@
 		};
 /* End XCLocalSwiftPackageReference section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+		D0F100000000000000000110 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.9.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
 		D0F100000000000000000101 /* StackdustCore */ = {
 			isa = XCSwiftPackageProductDependency;
@@ -456,6 +483,11 @@
 		D0F100000000000000000103 /* StackdustCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = StackdustCore;
+		};
+		D0F100000000000000000111 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D0F100000000000000000110 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
