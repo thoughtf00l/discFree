@@ -91,6 +91,11 @@ case "$signature" in
     *) echo "app is not signed by team $TEAM:" >&2; echo "$signature" >&2; exit 1 ;;
 esac
 codesign --verify --deep --strict "$APP" || { echo "code signature verification failed" >&2; exit 1; }
+CLI="$APP/Contents/Helpers/stackdust"
+[ -x "$CLI" ] || { echo "bundled CLI missing at Contents/Helpers/stackdust" >&2; exit 1; }
+"$CLI" --help >/dev/null || { echo "bundled CLI failed to run" >&2; exit 1; }
+lipo "$CLI" -verify_arch arm64 x86_64 || { echo "bundled CLI is not universal" >&2; exit 1; }
+[ -f "$APP/Contents/Resources/StackdustSkill.md" ] || { echo "bundled agent skill missing" >&2; exit 1; }
 
 # --- package ------------------------------------------------------------------
 DIST=.build/dist

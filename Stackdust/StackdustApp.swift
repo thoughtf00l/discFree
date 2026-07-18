@@ -26,6 +26,15 @@ struct StackdustApp: App {
             CommandGroup(after: .appInfo) {
                 CheckForUpdatesView(updater: updaterController.updater)
             }
+            CommandGroup(after: .help) {
+                Divider()
+                Button("Install 'stackdust' Command Line Tool") {
+                    AgentToolsInstaller.installCommandLineTool()
+                }
+                Button("Install Agent Skills") {
+                    AgentToolsInstaller.installAgentSkills()
+                }
+            }
         }
 
         Settings {

@@ -81,6 +81,7 @@
 				D0F1000000000000000000A7 /* Sources */,
 				D0F1000000000000000000A8 /* Frameworks */,
 				D0F1000000000000000000A9 /* Resources */,
+				D0F100000000000000000122 /* Embed CLI */,
 			);
 			buildRules = (
 			);
@@ -182,6 +183,28 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		D0F100000000000000000122 /* Embed CLI */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Embed CLI";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/bash;
+			shellScript = "set -euo pipefail\n# The bundled CLI must be self-contained: Xcode links package products as dynamic\n# PackageFrameworks whose rpaths do not survive outside the build tree, so the CLI\n# is built with swift build (static linkage) instead of as an Xcode-embedded product.\n# env -i keeps Xcode's build variables from leaking into SPM.\nARCH_FLAGS=\"\"\nfor arch in $ARCHS; do ARCH_FLAGS=\"$ARCH_FLAGS --arch $arch\"; done\nSCRATCH=\"$SRCROOT/.build/embedded-cli\"\nRUN=(env -i HOME=\"$HOME\" PATH=\"/usr/bin:/bin:/usr/sbin:/sbin\" DEVELOPER_DIR=\"${DEVELOPER_DIR:-}\" TMPDIR=\"${TMPDIR:-/tmp}\" xcrun swift build -c release --package-path \"$SRCROOT\" --scratch-path \"$SCRATCH\" $ARCH_FLAGS)\n\"${RUN[@]}\" --product stackdust\nBIN_DIR=$(\"${RUN[@]}\" --show-bin-path)\nHELPERS=\"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers\"\nmkdir -p \"$HELPERS\"\ncp -f \"$BIN_DIR/stackdust\" \"$HELPERS/stackdust\"\nif [ -n \"${EXPANDED_CODE_SIGN_IDENTITY:-}\" ]; then\n  codesign --force --options runtime --sign \"$EXPANDED_CODE_SIGN_IDENTITY\" \"$HELPERS/stackdust\"\nfi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		D0F1000000000000000000A7 /* Sources */ = {
@@ -348,6 +371,7 @@
 				CURRENT_PROJECT_VERSION = "$(MARKETING_VERSION)";
 				DEVELOPMENT_TEAM = LB2P67XHCM;
 				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Stackdust/Info.plist;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -374,6 +398,7 @@
 				CURRENT_PROJECT_VERSION = "$(MARKETING_VERSION)";
 				DEVELOPMENT_TEAM = LB2P67XHCM;
 				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Stackdust/Info.plist;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
