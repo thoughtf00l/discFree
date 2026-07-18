@@ -59,9 +59,12 @@ struct StartView: View {
                                 Spacer()
                             }
                             .contentShape(Rectangle())
+                            // Applied to the label content itself: the bordered style would
+                            // otherwise render the custom HStack in the accent tint, which
+                            // sinks into themed backgrounds.
+                            .foregroundStyle(.primary)
                         }
                         .buttonStyle(.bordered)
-                        .foregroundStyle(.primary)
                     }
                 }
                 .frame(maxWidth: 420)
