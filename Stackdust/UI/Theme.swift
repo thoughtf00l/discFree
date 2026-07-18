@@ -115,12 +115,25 @@ final class ThemeStore {
         var background: ThemeColor?
     }
 
+    /// The landing page's five accent colors, shared by the themes that keep its look.
+    nonisolated private static let siteColors = [
+        ThemeColor(hex: 0x4A8FF7), ThemeColor(hex: 0x58DB65), ThemeColor(hex: 0xFAC53E),
+        ThemeColor(hex: 0xF55D78), ThemeColor(hex: 0x8D41FF),
+    ]
+
     nonisolated static let builtIns: [Theme] = [
+        Theme(id: "light", name: "Light",
+              colors: siteColors,
+              accent: ThemeColor(hex: 0x8D41FF),
+              background: ThemeColor(hex: 0xFAF8FF)),
+        Theme(id: "dark", name: "Dark",
+              colors: siteColors,
+              accent: ThemeColor(hex: 0x8D41FF),
+              background: ThemeColor(hex: 0x000000)),
         Theme(id: "stackdust", name: "Stackdust",
-              colors: [ThemeColor(hex: 0x4A8FF7), ThemeColor(hex: 0x58DB65),
-                       ThemeColor(hex: 0xFAC53E), ThemeColor(hex: 0xF55D78),
-                       ThemeColor(hex: 0x8D41FF)],
-              accent: ThemeColor(hex: 0x8D41FF)),
+              colors: siteColors,
+              accent: ThemeColor(hex: 0x8D41FF),
+              background: ThemeColor(hex: 0x191228)),
         Theme(id: "classic", name: "Classic",
               colors: (0..<10).map {
                   ThemeColor(hue: Double($0) / 10, saturation: 0.80, brightness: 0.70)
@@ -143,8 +156,13 @@ final class ThemeStore {
               accent: ThemeColor(hex: 0x8D41FF)),
     ]
 
+    /// The default theme (Stackdust) — the selection fallback; not the first in the list.
+    nonisolated static var defaultTheme: Theme {
+        builtIns.first { $0.id == "stackdust" }!
+    }
+
     /// The palette `AppModel` starts with before the store pushes the persisted selection.
-    nonisolated static var defaultPalette: [ThemeColor] { builtIns[0].colors }
+    nonisolated static var defaultPalette: [ThemeColor] { defaultTheme.colors }
 
     private(set) var customThemes: [Theme]
     private var overrides: [String: Override]
@@ -158,7 +176,7 @@ final class ThemeStore {
         self.defaults = defaults
         customThemes = Self.decode([Theme].self, forKey: Self.customKey, from: defaults) ?? []
         overrides = Self.decode([String: Override].self, forKey: Self.overridesKey, from: defaults) ?? [:]
-        selectedID = defaults.string(forKey: Self.selectedKey) ?? Self.builtIns[0].id
+        selectedID = defaults.string(forKey: Self.selectedKey) ?? Self.defaultTheme.id
     }
 
     private let defaults: UserDefaults
@@ -173,7 +191,7 @@ final class ThemeStore {
     var themes: [Theme] { builtInThemes + customThemes }
 
     var selected: Theme {
-        themes.first { $0.id == selectedID } ?? builtInThemes[0]
+        themes.first { $0.id == selectedID } ?? resolveBuiltIn(Self.defaultTheme)
     }
 
     func isBuiltIn(_ id: String) -> Bool {
@@ -263,7 +281,7 @@ final class ThemeStore {
         guard !isBuiltIn(id) else { return }
         customThemes.removeAll { $0.id == id }
         if selectedID == id {
-            select(Self.builtIns[0].id)
+            select(Self.defaultTheme.id)
         }
         persist()
     }

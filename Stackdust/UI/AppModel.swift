@@ -44,11 +44,18 @@ final class AppModel {
 
     /// The active theme's branch colors, pushed in by the UI whenever the selected theme (or its
     /// edited colors) changes. Segment colors are baked into the layout, so a change recomputes it.
-    var themePalette: [ThemeColor] = ThemeStore.defaultPalette {
-        didSet {
-            guard themePalette != oldValue, let focus else { return }
-            rebuild(for: focus)
-        }
+    private(set) var themePalette: [ThemeColor] = ThemeStore.defaultPalette
+
+    /// Whether the chart draws over a dark background (custom dark color or system dark mode);
+    /// picks the depth ramp — vivid-core falloff on dark, pastel wash on light.
+    private(set) var themeDarkBackground: Bool = false
+
+    /// Applies the active theme's chart inputs in one step, recomputing the layout at most once.
+    func setTheme(palette: [ThemeColor], darkBackground: Bool) {
+        guard palette != themePalette || darkBackground != themeDarkBackground else { return }
+        themePalette = palette
+        themeDarkBackground = darkBackground
+        if let focus { rebuild(for: focus) }
     }
 
     /// Current focus (center of the sunburst). Changing it recomputes the layout.
@@ -331,11 +338,13 @@ final class AppModel {
         layoutTask?.cancel()
         let highlight = highlightReclaimable
         let palette = themePalette
+        let darkBackground = themeDarkBackground
         layoutTask = Task { [weak self] in
             let result = await Task.detached(priority: .userInitiated) {
                 () -> (segments: [SunburstSegment], rows: [ContentsPanelRow], total: Int64) in
                 let segments = SunburstLayout.build(focus: node, highlight: highlight,
-                                                    palette: palette)
+                                                    palette: palette,
+                                                    darkBackground: darkBackground)
                 let rows = SunburstLayout.rows(focus: node, highlight: highlight)
                 let total = SunburstLayout.focusDisplayTotal(focus: node)
                 return (segments, rows, total)

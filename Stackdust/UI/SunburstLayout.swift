@@ -109,8 +109,14 @@ enum SunburstLayout {
     static let maxDepth = 5
     static let minAngle = 0.5 * Double.pi / 180  // 0.5° — below this a slice is invisible
 
+    /// Per-ring brightness factors for the dark-background ramp: a vivid depth-1 core that
+    /// falls off toward the background, like the landing page's sunburst. Indexed by depth-1;
+    /// the last value covers any deeper ring.
+    private static let darkDepthFactors: [Double] = [1.0, 0.62, 0.42, 0.30, 0.24]
+
     static func build(
-        focus: FileNode, highlight: Bool, palette: [ThemeColor]
+        focus: FileNode, highlight: Bool, palette: [ThemeColor],
+        darkBackground: Bool = false
     ) -> [SunburstSegment] {
         var segments: [SunburstSegment] = []
         guard let children = focus.children else { return segments }
@@ -139,16 +145,16 @@ enum SunburstLayout {
             let base = palette[index % palette.count]
             append(entry.node, depth: 1, start: start, end: cursor, base: base,
                    isDev: entry.isDev, fraction: entry.fraction, highlight: highlight,
-                   into: &segments)
+                   darkBackground: darkBackground, into: &segments)
             recurse(entry.node, depth: 2, start: start, end: cursor,
                     base: base, nodeIsDev: entry.isDev, focusTotal: total, highlight: highlight,
-                    into: &segments)
+                    darkBackground: darkBackground, into: &segments)
         }
         // The grouped tail fills the ring from where the drawn head ended to the full circle,
         // closing the gap the minAngle cull would otherwise leave.
         if !tail.isEmpty {
             appendOther(tail, depth: 1, start: cursor, end: 2 * Double.pi,
-                        highlight: highlight, into: &segments)
+                        highlight: highlight, darkBackground: darkBackground, into: &segments)
         }
         return segments
     }
@@ -190,7 +196,7 @@ enum SunburstLayout {
     private static func recurse(
         _ node: FileNode, depth: Int, start: Double, end: Double,
         base: ThemeColor, nodeIsDev: Bool, focusTotal: Int64, highlight: Bool,
-        into segments: inout [SunburstSegment]
+        darkBackground: Bool, into segments: inout [SunburstSegment]
     ) {
         guard depth <= maxDepth, let children = node.children else { return }
         let parentTotal = node.allocatedSize
@@ -207,27 +213,38 @@ enum SunburstLayout {
             guard extent >= minAngle else { continue }
             append(entry.node, depth: depth, start: childStart, end: cursor, base: base,
                    isDev: entry.isDev, fraction: entry.fraction, highlight: highlight,
-                   into: &segments)
+                   darkBackground: darkBackground, into: &segments)
             recurse(entry.node, depth: depth + 1, start: childStart, end: cursor,
                     base: base, nodeIsDev: entry.isDev, focusTotal: focusTotal, highlight: highlight,
-                    into: &segments)
+                    darkBackground: darkBackground, into: &segments)
         }
         if !tail.isEmpty {
             appendOther(tail, depth: depth, start: cursor, end: end,
-                        highlight: highlight, into: &segments)
+                        highlight: highlight, darkBackground: darkBackground, into: &segments)
         }
     }
 
     private static func append(
         _ node: FileNode, depth: Int, start: Double, end: Double, base: ThemeColor,
-        isDev: Bool, fraction: Double, highlight: Bool, into segments: inout [SunburstSegment]
+        isDev: Bool, fraction: Double, highlight: Bool, darkBackground: Bool,
+        into segments: inout [SunburstSegment]
     ) {
-        // Outer rings get lighter, less saturated shades of the branch color. The ramp is
-        // relative to the palette color's own saturation/brightness; for the Classic theme
-        // (s 0.80, b 0.70) it reproduces the pre-theme absolute ramp exactly.
+        // On a light background outer rings get lighter, less saturated shades of the branch
+        // color (relative to the palette color's own saturation/brightness; for the Classic
+        // theme it reproduces the pre-theme absolute ramp exactly). On a dark background that
+        // pastel wash reads as mud — instead the depth-1 core keeps the full color and outer
+        // rings fall off toward the dark, staying saturated, like the landing page's chart.
         let hsb = base.hsb
-        let saturation = max(0.25, hsb.saturation - Double(depth - 1) * 0.11)
-        let brightness = min(0.97, hsb.brightness + Double(depth - 1) * 0.06)
+        let saturation: Double
+        let brightness: Double
+        if darkBackground {
+            let factor = Self.darkDepthFactors[min(depth - 1, Self.darkDepthFactors.count - 1)]
+            saturation = max(0.35, hsb.saturation - Double(depth - 1) * 0.04)
+            brightness = hsb.brightness * factor
+        } else {
+            saturation = max(0.25, hsb.saturation - Double(depth - 1) * 0.11)
+            brightness = min(0.97, hsb.brightness + Double(depth - 1) * 0.06)
+        }
         segments.append(
             SunburstSegment(
                 id: segments.count,
@@ -256,14 +273,16 @@ enum SunburstLayout {
     /// color; the honest combined reclaimable share is still recorded in `reclaimableFraction`.
     private static func appendOther(
         _ tail: ArraySlice<Entry>, depth: Int, start: Double, end: Double,
-        highlight: Bool, into segments: inout [SunburstSegment]
+        highlight: Bool, darkBackground: Bool, into segments: inout [SunburstSegment]
     ) {
         let size = tail.reduce(Int64(0)) { $0 + $1.size }
         // `fraction * size` is each entry's reclaimable bytes (devSize for a container, the full
         // size for a dev item), so the sum over size is the tail's combined reclaimable share.
         let devBytes = tail.reduce(0.0) { $0 + $1.fraction * Double($1.size) }
         let fraction = size > 0 ? devBytes / Double(size) : 0
-        let brightness = min(0.97, 0.70 + Double(depth - 1) * 0.06)
+        let brightness = darkBackground
+            ? max(0.20, 0.42 - Double(depth - 1) * 0.05)
+            : min(0.97, 0.70 + Double(depth - 1) * 0.06)
         segments.append(
             SunburstSegment(
                 id: segments.count,

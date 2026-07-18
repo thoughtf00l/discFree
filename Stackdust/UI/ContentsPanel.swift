@@ -19,6 +19,12 @@ struct ContentsPanel: View {
     /// Non-nil when the theme paints a custom window background; the List then hides its own
     /// opaque background so the color shows through.
     @Environment(\.themeBackground) private var themeBackground
+    @Environment(\.colorScheme) private var colorScheme
+
+    /// Mirrors `ContentView.pushTheme`: dark custom color, or system dark mode.
+    private var darkBackground: Bool {
+        themeBackground.map { $0.luminance < 0.5 } ?? (colorScheme == .dark)
+    }
 
     var body: some View {
         List {
@@ -28,6 +34,7 @@ struct ContentsPanel: View {
                     focusTotal: focusTotal,
                     base: palette.isEmpty ? ThemeColor(hue: 0, saturation: 0, brightness: 0.7)
                                           : palette[index % palette.count],
+                    darkBackground: darkBackground,
                     isHovered: isRowHovered(row)
                 )
                 .contentShape(Rectangle())
@@ -78,6 +85,7 @@ private struct ContentsRow: View {
     let row: ContentsPanelRow
     let focusTotal: Int64
     let base: ThemeColor
+    let darkBackground: Bool
     let isHovered: Bool
 
     private var share: Double {
@@ -95,10 +103,16 @@ private struct ContentsRow: View {
         if row.isOther { return Color(white: 0.6) }  // neutral gray, matching the "Other" wedge
         if isUnreadableLike { return Color(white: 0.55) }
         // Same blend as the matching sunburst wedge: full color when highlighting is off
-        // (fraction 1), desaturated toward gray by its reclaimable share when on. The swatch
-        // ramp mirrors the wedge ramp's shape (slightly brighter, less saturated than depth 1);
-        // for the Classic palette it reproduces the pre-theme fixed 0.7/0.82 exactly.
+        // (fraction 1), desaturated toward gray by its reclaimable share when on. On a light
+        // background the swatch mirrors the wedge ramp's shape (slightly brighter, less
+        // saturated than depth 1; reproduces the pre-theme fixed 0.7/0.82 for Classic). On a
+        // dark background the wedges keep their full color, so the swatch does too.
         let hsb = base.hsb
+        if darkBackground {
+            return SunburstSegment.tint(hue: hsb.hue, saturation: hsb.saturation,
+                                        brightness: hsb.brightness,
+                                        fraction: row.reclaimableFraction)
+        }
         return SunburstSegment.tint(hue: hsb.hue,
                                     saturation: max(0.25, hsb.saturation - 0.10),
                                     brightness: min(1.0, hsb.brightness + 0.12),
