@@ -199,14 +199,6 @@ final class ThemeStore {
     ]
 
     nonisolated static let builtIns: [Theme] = [
-        Theme(id: "light", name: "Light",
-              colors: siteColors,
-              accent: ThemeColor(hex: 0x8D41FF),
-              background: ThemeColor(hex: 0xFAF8FF)),
-        Theme(id: "dark", name: "Dark",
-              colors: siteColors,
-              accent: ThemeColor(hex: 0x8D41FF),
-              background: ThemeColor(hex: 0x000000)),
         Theme(id: "stackdust", name: "Stackdust",
               colors: siteColors,
               accent: ThemeColor(hex: 0x8D41FF),
