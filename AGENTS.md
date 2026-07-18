@@ -15,6 +15,9 @@ interactive, never deletes permanently.
 - `Stackdust/` — the macOS app (SwiftUI); built by `Stackdust.xcodeproj`, consumes the
   local package.
 - `Tests/` — package tests (core + CLI). `StackdustTests/` — app/UI tests.
+- `scripts/` — release tooling (`release.sh` and its helpers).
+- `docs/` — the stackdust.app landing page and the Sparkle appcast, served by
+  GitHub Pages (custom domain `stackdust.app`).
 
 ## Build and test
 
@@ -38,7 +41,37 @@ The built CLI binary lands at `.build/debug/stackdust`.
   down the recursion (see `DevClassifier.classify`).
 - Deletion anywhere in the project means `FileManager.trashItem` (recoverable),
   never `removeItem`.
+- The bundle identifier stays `org.cosmoshark.DiscFree` (the app's pre-rename name)
+  on purpose: changing it would reset users' Full Disk Access grant and settings.
+  Never "fix" it to match the product name.
+- `CURRENT_PROJECT_VERSION` is `$(MARKETING_VERSION)` in the pbxproj: Sparkle
+  compares `CFBundleVersion`, so it must grow with every release. Bump only
+  `MARKETING_VERSION` (the release script does this).
 - Before claiming a change works, run the builds and tests above.
+
+## Release and distribution
+
+`scripts/release.sh X.Y.Z [--notes "..."] [--dry-run]` performs the whole release:
+bumps `MARKETING_VERSION`, builds Release, verifies the bundle (versions, Sparkle
+keys, code signature by team LB2P67XHCM), packages `Stackdust-X.Y.Z.zip` plus a
+drag-to-Applications `Stackdust-X.Y.Z.dmg` (and an unversioned `Stackdust.dmg` for
+the site's stable `releases/latest` link), signs the zip with Sparkle's
+`sign_update`, prepends an item to `docs/appcast.xml`, publishes the GitHub
+release, and bumps the Homebrew cask in `~/dev/homebrew-tap` with an end-to-end
+sha256 re-download check. `--dry-run` builds and packages, then reverts the bump —
+nothing is committed or published.
+
+- In-app updates: Sparkle 2. Feed: `https://stackdust.app/appcast.xml`, served from
+  `docs/` by GitHub Pages. The EdDSA private key lives in the login Keychain
+  (created by Sparkle's `generate_keys`, 2026-07-18); the public key is
+  `SUPublicEDKey` in `Stackdust/Info.plist`. Updates cannot be signed without the
+  private key — do not delete it from the Keychain.
+- Homebrew: cask `thoughtf00l/tap/stackdust` with `auto_updates true` (Sparkle owns
+  updates; `brew upgrade` skips the cask unless `--greedy`). The pre-rename
+  `discfree` cask is deprecated and migrates via `tap_migrations.json`.
+- The app is not notarized (no Developer ID certificate): the cask clears
+  quarantine in postflight; direct-download users must allow the app via
+  System Settings → Privacy & Security → "Open Anyway".
 
 ## Using the `stackdust` CLI (for agents)
 
