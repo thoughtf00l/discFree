@@ -231,7 +231,7 @@
     <div class="showcase-track" id="showcase" hidden>
       <div class="showcase-sticky">
         <div class="showcase-frame">
-          <img src="assets/main-window.png" alt="Stackdust main window: sunburst chart of a disk with the contents panel">
+          <img class="shot-main" src="assets/main-window.png" alt="Stackdust main window: sunburst chart of a disk with the contents panel">
           <img class="shot-reclaim" src="assets/reclaim.png" alt="Stackdust Reclaim pane: dev junk grouped by category with risk badges">
         </div>
         <p class="showcase-caption">
@@ -286,6 +286,7 @@ brew install --cask stackdust</pre>
   fallback.hidden = true;
   track.hidden = false;
 
+  const main = track.querySelector('.shot-main');
   const reclaim = track.querySelector('.shot-reclaim');
   const captions = track.querySelectorAll('.showcase-caption span');
   const clamp = (v) => Math.min(1, Math.max(0, v));
@@ -296,6 +297,9 @@ brew install --cask stackdust</pre>
     const progress = scrollable > 0 ? clamp(-rect.top / scrollable) : 1;
     // The sheet fades in across the middle of the section's scroll range.
     const t = clamp((progress - 0.35) / 0.3);
+    // A true swap: the main window fades out as the Reclaim pane fades in, so the
+    // slightly different frame sizes never show through each other.
+    main.style.opacity = 1 - t;
     reclaim.style.opacity = t;
     captions.forEach((span) => {
       span.classList.toggle('active', (span.dataset.step === '1') === (t > 0.5));
