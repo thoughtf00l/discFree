@@ -181,9 +181,15 @@ final class AppModel {
 
     // MARK: - Scanning
 
+    /// A cached scan younger than this opens without the automatic background rescan: a
+    /// tree this fresh is unlikely to be meaningfully stale, and rescanning the disk on
+    /// every relaunch is wasted IO. Manual "New Scan" is unaffected.
+    private static let backgroundRefreshThreshold: TimeInterval = 10 * 60
+
     /// Opens the most recent cached scan, if any, instead of starting at the picker: the
-    /// tree appears immediately (marked with its scan date) and a background rescan starts
-    /// to bring it up to date. Called once when the UI appears; no-op without a cache.
+    /// tree appears immediately (marked with its scan date) and, when the snapshot is older
+    /// than `backgroundRefreshThreshold`, a background rescan starts to bring it up to date.
+    /// Called once when the UI appears; no-op without a cache.
     func attemptResume() {
         guard !didAttemptResume else { return }
         didAttemptResume = true
@@ -208,10 +214,13 @@ final class AppModel {
             self.phase = .result
             self.recountUnreadable(in: loaded.tree)
             self.classify(loaded.tree)
-            self.startBackgroundRefresh(
-                at: rootURL,
-                expectedBytes: loaded.entry.header.totalBytes
-            )
+            if Date().timeIntervalSince(loaded.entry.header.scanDate)
+                >= Self.backgroundRefreshThreshold {
+                self.startBackgroundRefresh(
+                    at: rootURL,
+                    expectedBytes: loaded.entry.header.totalBytes
+                )
+            }
         }
     }
 
