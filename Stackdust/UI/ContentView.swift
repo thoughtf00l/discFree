@@ -26,6 +26,7 @@ struct ContentView: View {
         // Custom background paints the whole window (title bar included) and forces the
         // control scheme by its luminance so labels stay readable; nil follows the system.
         .containerBackground(backgroundStyle, for: .window)
+        .background(TitlebarConfigurator(transparent: themeStore.selected.background != nil))
         .preferredColorScheme(themeStore.selected.colorScheme)
         .environment(themeStore)
         .environment(\.themeBackground, themeStore.selected.background)
@@ -48,6 +49,32 @@ struct ContentView: View {
         } else {
             AnyShapeStyle(.windowBackground)
         }
+    }
+}
+
+/// AppKit window dressing SwiftUI cannot express: a transparent title bar, so the theme's
+/// window background shows through it (`containerBackground` alone stops at the title bar's
+/// material). System-background themes get the standard material back.
+struct TitlebarConfigurator: NSViewRepresentable {
+    let transparent: Bool
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        // The window is not attached yet during makeNSView; configure on the next runloop turn.
+        DispatchQueue.main.async { [transparent] in
+            Self.apply(transparent: transparent, to: view.window)
+        }
+        return view
+    }
+
+    func updateNSView(_ view: NSView, context: Context) {
+        Self.apply(transparent: transparent, to: view.window)
+    }
+
+    private static func apply(transparent: Bool, to window: NSWindow?) {
+        guard let window else { return }
+        window.titlebarAppearsTransparent = transparent
+        window.titlebarSeparatorStyle = transparent ? .none : .automatic
     }
 }
 

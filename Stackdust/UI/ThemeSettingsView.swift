@@ -17,6 +17,7 @@ struct ThemeSettingsView: View {
         .frame(width: 640, height: 420)
         // The Settings window wears the theme too: surface color, control scheme, accent.
         .background(surfaceStyle, ignoresSafeAreaEdges: .all)
+        .background(TitlebarConfigurator(transparent: store.selected.background != nil))
         .preferredColorScheme(store.selected.colorScheme)
         .tint(store.selected.accent.color)
     }
