@@ -114,6 +114,11 @@ enum SunburstLayout {
     /// the last value covers any deeper ring.
     private static let darkDepthFactors: [Double] = [1.0, 0.62, 0.42, 0.30, 0.24]
 
+    /// Brightness cap for the depth-1 core on a light background. Palettes tuned for dark
+    /// backgrounds sit near brightness 1.0 and wash out against white; capping deepens them
+    /// while leaving already-deep palettes (Classic, 0.70) untouched.
+    static let lightCoreMaxBrightness = 0.78
+
     static func build(
         focus: FileNode, highlight: Bool, palette: [ThemeColor],
         darkBackground: Bool = false
@@ -242,8 +247,9 @@ enum SunburstLayout {
             saturation = max(0.35, hsb.saturation - Double(depth - 1) * 0.04)
             brightness = hsb.brightness * factor
         } else {
+            let core = min(hsb.brightness, Self.lightCoreMaxBrightness)
             saturation = max(0.25, hsb.saturation - Double(depth - 1) * 0.11)
-            brightness = min(0.97, hsb.brightness + Double(depth - 1) * 0.06)
+            brightness = min(0.97, core + Double(depth - 1) * 0.06)
         }
         segments.append(
             SunburstSegment(

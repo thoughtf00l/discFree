@@ -113,9 +113,10 @@ private struct ContentsRow: View {
                                         brightness: hsb.brightness,
                                         fraction: row.reclaimableFraction)
         }
+        let core = min(hsb.brightness, SunburstLayout.lightCoreMaxBrightness)
         return SunburstSegment.tint(hue: hsb.hue,
                                     saturation: max(0.25, hsb.saturation - 0.10),
-                                    brightness: min(1.0, hsb.brightness + 0.12),
+                                    brightness: min(1.0, core + 0.12),
                                     fraction: row.reclaimableFraction)
     }
 
