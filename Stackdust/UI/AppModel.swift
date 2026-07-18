@@ -463,6 +463,11 @@ final class AppModel {
         saveSnapshot(of: tree)
     }
 
+    /// User-initiated stop of the background refresh; the cached tree stays on screen.
+    func stopRefresh() {
+        cancelRefresh()
+    }
+
     private func cancelRefresh() {
         refreshTask?.cancel()
         refreshTask = nil

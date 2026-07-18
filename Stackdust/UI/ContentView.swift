@@ -75,6 +75,14 @@ struct TitlebarConfigurator: NSViewRepresentable {
 
     private static func apply(transparent: Bool, to window: NSWindow?) {
         guard let window else { return }
+        // A transparent title bar reveals the window's backgroundColor, not the SwiftUI
+        // background — the content view must extend under the title bar for the theme's
+        // containerBackground (color or glass material) to reach it.
+        if transparent {
+            window.styleMask.insert(.fullSizeContentView)
+        } else {
+            window.styleMask.remove(.fullSizeContentView)
+        }
         window.titlebarAppearsTransparent = transparent
         window.titlebarSeparatorStyle = transparent ? .none : .automatic
     }

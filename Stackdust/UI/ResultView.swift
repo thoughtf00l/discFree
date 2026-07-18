@@ -38,7 +38,8 @@ struct ResultView: View {
                 RefreshBar(
                     fraction: model.refreshFraction,
                     bytesScanned: model.refreshProgress?.bytesAccumulated ?? 0,
-                    dataDate: model.lastScanDate
+                    dataDate: model.lastScanDate,
+                    onStop: { model.stopRefresh() }
                 )
                 Divider()
             } else if model.scanActive {
@@ -186,6 +187,8 @@ private struct RefreshBar: View {
     let fraction: Double?
     let bytesScanned: Int64
     let dataDate: Date?
+    /// Abandons the background refresh, keeping the cached tree on screen.
+    let onStop: () -> Void
 
     var body: some View {
         HStack(spacing: 10) {
@@ -201,6 +204,11 @@ private struct RefreshBar: View {
                 .monospacedDigit()
                 .lineLimit(1)
                 .fixedSize()
+            Button("Stop", action: onStop)
+                .controlSize(.small)
+                .buttonStyle(.bordered)
+                .foregroundStyle(.primary)
+                .help("Stop refreshing and keep the cached scan")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 4)
