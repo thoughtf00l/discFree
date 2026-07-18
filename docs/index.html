@@ -82,14 +82,10 @@
   .cta-note { width: 100%; color: var(--muted); font-size: 13.5px; margin-top: 4px; }
   .cta-note a { color: var(--muted); }
 
-  .chart-card {
-    margin: 64px auto 0; max-width: 780px;
-    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
-    padding: 10px 10px 0; box-shadow: 0 30px 80px rgba(0,0,0,.35);
-  }
-  .chart-titlebar { display: flex; gap: 7px; padding: 10px 12px; }
-  .chart-titlebar i { width: 12px; height: 12px; border-radius: 50%; background: var(--line); }
-  #sunburst { display: block; width: 100%; height: auto; }
+  .shots { display: grid; gap: 26px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); margin-top: 40px; }
+  .shot { margin: 0; }
+  .shot img { width: 100%; height: auto; display: block; }
+  .shot figcaption { color: var(--muted); font-size: 13.5px; margin-top: 4px; text-align: center; }
 
   section { padding: 72px 0; }
   .kicker {
@@ -167,47 +163,31 @@
       <a class="btn btn-ghost mono" href="#install">brew install stackdust</a>
       <div class="cta-note">Free &amp; open source · macOS 15+ · Apple silicon &amp; Intel · <a href="https://github.com/thoughtf00l/stackdust">GitHub</a></div>
     </div>
-    <div class="chart-card">
-      <div class="chart-titlebar"><i></i><i></i><i></i></div>
-      <svg id="sunburst" viewBox="0 0 760 420" role="img" aria-label="Sunburst chart of disk usage, as drawn by Stackdust"></svg>
-    </div>
   </div>
 </header>
 
 <section>
   <div class="wrap">
-    <div class="kicker">Why Stackdust</div>
-    <h2>Your disk fills itself. Now you can see how.</h2>
-    <p class="lead">One scan draws your whole disk as a sunburst — every ring a directory level, every arc sized by what it actually takes on disk. Hard links and firmlinks counted once, iCloud-evicted folders left in the cloud where they belong.</p>
-    <div class="grid">
-      <div class="card">
-        <div class="dot" style="background:rgba(74,143,247,.15)">🞄</div>
-        <h3>Built for dev junk</h3>
-        <p>Xcode DerivedData and device support, simulators, <code>node_modules</code>, Rust targets, Gradle, Docker VM disks, package-manager caches, app caches, logs — found and grouped by category.</p>
-      </div>
-      <div class="card">
-        <div class="dot" style="background:rgba(88,219,101,.15)">🗑</div>
-        <h3>Trash, never rm</h3>
-        <p>Cleanup means <em>move to Trash</em> — always recoverable, never a permanent unlink. Archives and device backups that can't be regenerated are never touched without you.</p>
-      </div>
-      <div class="card">
-        <div class="dot" style="background:rgba(250,197,62,.15)">⚖︎</div>
-        <h3>Honest about risk</h3>
-        <p>Every reclaimable item carries a tier: <code>safe</code> to regenerate, <code>costs_time</code> to re-download, or <code>loses_state</code> forever. You decide where the line is.</p>
-      </div>
-      <div class="card">
-        <div class="dot" style="background:rgba(245,93,120,.15)">⌘</div>
-        <h3>In-app updates</h3>
-        <p>Check for updates from the app menu; new versions install themselves via Sparkle. Or stay on Homebrew — both channels ship the same build.</p>
-      </div>
+    <div class="kicker">The app</div>
+    <h2>A UI for humans.</h2>
+    <p class="lead">One scan draws your disk as a sunburst — every ring a directory level, every arc sized by what it actually takes on disk. The Reclaim pane groups dev junk by category and honest risk tier, and cleanup only ever means <em>move to Trash</em>.</p>
+    <div class="shots">
+      <figure class="shot">
+        <img src="assets/main-window.png" alt="Stackdust main window: sunburst chart of a disk with the contents panel" loading="lazy">
+        <figcaption>The sunburst: click to drill in, hover to inspect, highlight what's reclaimable.</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="assets/reclaim.png" alt="Stackdust Reclaim pane: dev junk grouped by category with risk badges" loading="lazy">
+        <figcaption>Reclaim: caches, builds, and simulators grouped by category, each with its risk tier.</figcaption>
+      </figure>
     </div>
   </div>
 </section>
 
 <section>
   <div class="wrap">
-    <div class="kicker">For agents</div>
-    <h2>A CLI your coding agent already knows how to use.</h2>
+    <div class="kicker">The CLI</div>
+    <h2>For CLI lovers and agents.</h2>
     <p class="lead">Claude, Codex, or a cron job — <code>stackdust</code> treats programs as first-class users: JSON everywhere, stable exit codes, never interactive, and a dry-run-by-default cleanup that physically cannot delete permanently.</p>
     <div class="term">
       <div class="term-bar"><i></i><i></i><i></i></div>
@@ -260,68 +240,6 @@ brew install --cask stackdust</pre>
   </div>
 </footer>
 
-<script>
-// Draw the hero sunburst the same way the app does: rings of arcs, sized by bytes.
-(function () {
-  const svg = document.getElementById('sunburst');
-  const W = 760, H = 420, cx = W / 2, cy = H + 40; // half-donut rising from the card edge
-  const colors = ['#4a8ff7', '#58db65', '#fac53e', '#f55d78', '#8d41ff'];
-
-  // name, share of parent, depth-1 children as shares of self
-  const tree = [
-    { share: .34, kids: [.55, .25, .2] },   // Developer
-    { share: .22, kids: [.6, .4] },          // Library
-    { share: .18, kids: [.45, .3, .25] },    // dev
-    { share: .15, kids: [.7, .3] },          // Movies
-    { share: .11, kids: [1] },               // rest
-  ];
-
-  const rings = [[64, 132], [140, 208], [216, 284]];
-  const span = Math.PI; // 180°
-  const gap = 0.012;
-
-  function arc(r0, r1, a0, a1, fill, opacity) {
-    a0 += gap / 2; a1 -= gap / 2;
-    const p = (r, a) => [cx + r * Math.cos(a), cy - r * Math.sin(a)];
-    const large = (a1 - a0) > Math.PI ? 1 : 0;
-    const [x0, y0] = p(r1, a0), [x1, y1] = p(r1, a1);
-    const [x2, y2] = p(r0, a1), [x3, y3] = p(r0, a0);
-    const d = `M${x0} ${y0} A${r1} ${r1} 0 ${large} 0 ${x1} ${y1} L${x2} ${y2} A${r0} ${r0} 0 ${large} 1 ${x3} ${y3} Z`;
-    const el = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    el.setAttribute('d', d);
-    el.setAttribute('fill', fill);
-    el.setAttribute('opacity', opacity);
-    svg.appendChild(el);
-  }
-
-  let a = Math.PI; // start at left
-  tree.forEach((node, i) => {
-    const w = node.share * span;
-    arc(...rings[0], a - w, a, colors[i % colors.length], .95);
-    let ka = a;
-    node.kids.forEach((k, j) => {
-      const kw = k * w;
-      arc(...rings[1], ka - kw, ka, colors[i % colors.length], .55 - j * .08);
-      // sprinkle a third ring on the first two kids
-      if (j < 2) {
-        const gw = kw * .6;
-        arc(...rings[2], ka - gw, ka, colors[i % colors.length], .28);
-      }
-      ka -= kw;
-    });
-    a -= w;
-  });
-
-  // center label
-  const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-  t.setAttribute('x', cx); t.setAttribute('y', H - 14);
-  t.setAttribute('text-anchor', 'middle');
-  t.setAttribute('fill', 'currentColor');
-  t.setAttribute('style', 'font-weight:700;font-size:22px;letter-spacing:-.01em');
-  t.textContent = 'Macintosh HD — 512 GB';
-  svg.appendChild(t);
-})();
-</script>
 
 </body>
 </html>
