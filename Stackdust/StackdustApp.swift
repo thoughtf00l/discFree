@@ -16,6 +16,10 @@ struct StackdustApp: App {
         Window("Stackdust", id: "main") {
             ContentView(themeStore: themeStore)
         }
+        // No title-bar chrome: on macOS 26 the glass title bar ignores
+        // titlebarAppearsTransparent, so themed backgrounds could never reach it. The traffic
+        // lights float over the content; the top strip still drags the window.
+        .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 900, height: 680)
         .windowResizability(.contentMinSize)
         .commands {

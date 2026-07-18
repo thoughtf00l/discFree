@@ -29,7 +29,9 @@ struct ResultView: View {
                 .themedProminentButton(glass: themeStore.selected.isGlass)
                 .fixedSize()
             }
-            .padding(.horizontal, 12)
+            // The window has no title bar; the leading inset clears the floating traffic lights.
+            .padding(.leading, 78)
+            .padding(.trailing, 12)
             .padding(.vertical, 8)
 
             Divider()
