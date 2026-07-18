@@ -3,6 +3,15 @@
   <channel>
     <title>Stackdust</title>
     <item>
+      <title>1.1.0</title>
+      <pubDate>Sat, 18 Jul 2026 12:31:20 GMT</pubDate>
+      <sparkle:version>1.1.0</sparkle:version>
+      <sparkle:shortVersionString>1.1.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+      <description>The stackdust CLI now ships inside the app: install it into your PATH — plus an agent skill for AI coding tools — straight from the Help menu. dev and clean now check the known cache and build locations in seconds by default; pass your project directories for a full scan. Per-app log folders can now be reclaimed individually.</description>
+      <enclosure url="https://github.com/thoughtf00l/stackdust/releases/download/v1.1.0/Stackdust-1.1.0.zip" sparkle:edSignature="ulxdSRNDQluQrgAQtjPgqiTSRj+tm/UuXcncb31A3xv/y3RLHuqJWpL9/y134rN8bXzcrOi0OhfWXTC4iXmZCQ==" length="5079696" type="application/octet-stream"/>
+    </item>
+    <item>
       <title>1.0.8</title>
       <pubDate>Sat, 18 Jul 2026 11:08:03 GMT</pubDate>
       <sparkle:version>1.0.8</sparkle:version>
