@@ -125,7 +125,11 @@ echo "==> Committing and publishing v$VERSION"
 git add "$PBXPROJ" "$APPCAST"
 git commit -m "Release $VERSION"
 git push
-gh release create "v$VERSION" "$ZIP" "$DMG" --title "Stackdust $VERSION" --notes "$NOTES"
+# unversioned DMG copy: the site's download button points at
+# releases/latest/download/Stackdust.dmg, which needs a fixed asset name
+cp "$DMG" "$DIST/Stackdust.dmg"
+gh release create "v$VERSION" "$ZIP" "$DMG" "$DIST/Stackdust.dmg" \
+    --title "Stackdust $VERSION" --notes "$NOTES"
 
 SHA=$(shasum -a 256 "$ZIP" | cut -d' ' -f1)
 
