@@ -10,9 +10,9 @@ struct StartView: View {
         VStack(spacing: 24) {
             Spacer()
 
-            Image(systemName: "internaldrive")
-                .font(.system(size: 56))
-                .foregroundStyle(.tint)
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .frame(width: 96, height: 96)
             Text("Stackdust")
                 .font(.largeTitle.bold())
             VStack(spacing: 4) {
